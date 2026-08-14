@@ -12,6 +12,7 @@ import (
 
 	"github.com/google/go-github/v89/github"
 	"github.com/hashicorp/terraform-plugin-testing/helper/acctest"
+	"github.com/shurcooL/githubv4"
 )
 
 const testRandomIDLength = 5
@@ -567,5 +568,36 @@ func mustUpdateRepositoryDependabotSecret(t *testing.T, repo *github.Repository,
 		EncryptedValue: encryptedValue,
 	}); err != nil {
 		t.Fatalf("failed to update test repository dependabot secret: %v", err)
+	}
+}
+
+// mustInviteEnterpriseMember sends an enterprise invitation outside of Terraform so that a test can
+// exercise a resource against an invitation that already exists.
+func mustInviteEnterpriseMember(t *testing.T, enterpriseSlug, username string) {
+	t.Helper()
+
+	client := testAccConf.meta.v4client
+
+	enterpriseID, err := getEnterpriseID(t.Context(), client, enterpriseSlug)
+	if err != nil {
+		t.Fatalf("failed to resolve test enterprise %q: %v", enterpriseSlug, err)
+	}
+
+	var mutation struct {
+		InviteEnterpriseMember struct {
+			Invitation struct {
+				ID githubv4.String
+			}
+		} `graphql:"inviteEnterpriseMember(input: $input)"`
+	}
+
+	invitee := githubv4.String(username)
+	input := githubv4.InviteEnterpriseMemberInput{
+		EnterpriseID: githubv4.ID(enterpriseID),
+		Invitee:      &invitee,
+	}
+
+	if err := client.Mutate(t.Context(), &mutation, input, nil); err != nil {
+		t.Fatalf("failed to invite %q to test enterprise: %v", username, err)
 	}
 }
