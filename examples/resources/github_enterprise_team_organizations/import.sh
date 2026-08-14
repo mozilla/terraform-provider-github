@@ -1,0 +1,1 @@
+terraform import github_enterprise_team_organizations.platform my-enterprise:ent:platform
