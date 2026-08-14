@@ -412,3 +412,15 @@ func skipUnlessHasOrgUser2(t *testing.T) {
 // 		t.Skip("Skipping as no test org user 3 is configured")
 // 	}
 // }
+
+func skipUnlessHasExternalUser1(t *testing.T) {
+	if testAccConf.testExternalUser1 == "" {
+		t.Skip("Skipping as no external test user is configured")
+	}
+}
+
+func skipUnlessHasExternalUser2(t *testing.T) {
+	if testAccConf.testExternalUser2 == "" {
+		t.Skip("Skipping as no external test user 2 is configured")
+	}
+}
