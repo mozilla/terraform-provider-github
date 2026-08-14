@@ -1,10 +1,14 @@
 package github
 
 import (
+	"maps"
 	"net/http"
 	"net/http/httptest"
 	"regexp"
+	"strings"
 	"testing"
+
+	"github.com/hashicorp/terraform-plugin-sdk/v2/helper/schema"
 )
 
 func TestProvider(t *testing.T) {
@@ -62,6 +66,24 @@ func Test_configureProviderMeta(t *testing.T) {
 				Owner:             "test-user",
 			},
 			wantName: "test-user",
+		},
+		{
+			// An app installed at the enterprise level has no owner. installResp is intentionally nil: the configured installation id must be used without an /orgs/{owner}/installation lookup.
+			name: "app_auth_no_owner",
+			conf: &Config{
+				AppID:             new("111111"),
+				AppInstallationID: new("999999"),
+				AppPEM:            mustNewPEM(t),
+			},
+		},
+		{
+			name: "app_auth_errors_on_non_numeric_installation_id",
+			conf: &Config{
+				AppID:             new("111111"),
+				AppInstallationID: new("not-a-number"),
+				AppPEM:            mustNewPEM(t),
+			},
+			wantErr: `invalid app installation id "not-a-number"`,
 		},
 		{
 			name:     "token_auth_organization",
@@ -131,6 +153,17 @@ func Test_configureProviderMeta(t *testing.T) {
 				Owner:             "test-user",
 			},
 			wantName: "test-user",
+		},
+		{
+			// tokenUserResp is intentionally nil: `GET /user` must not be called under app authentication, as it is not accessible to an installation token. See integrations/terraform-provider-github#2886.
+			name: "legacy_client_app_auth_no_owner",
+			conf: &Config{
+				LegacyClient:      true,
+				AppID:             new("111111"),
+				AppInstallationID: new("999999"),
+				AppPEM:            mustNewPEM(t),
+				Token:             "test-token",
+			},
 		},
 		{
 			name:     "legacy_client_token_auth_organization",
@@ -266,6 +299,154 @@ func Test_configureProviderMeta(t *testing.T) {
 
 			if tt.conf.Owner != "" && meta.v4client == nil {
 				t.Errorf("expected graphql client to be non-nil")
+			}
+		})
+	}
+}
+
+// Test_configureProvider covers the interaction between auth_mode, the app_auth block and the owner argument. It can't be parallel, at either level, because configureProvider reads the process environment and the subtests use [testing.T.Setenv] to isolate themselves from it.
+func Test_configureProvider(t *testing.T) { //nolint:paralleltest
+	pem := string(mustNewPEM(t))
+
+	appAuth := func(id, installationID, pemFile string) []any {
+		return []any{map[string]any{"id": id, "installation_id": installationID, "pem_file": pemFile}}
+	}
+
+	for _, tt := range []struct {
+		name      string
+		raw       map[string]any
+		userResp  *string
+		wantName  string
+		wantIsOrg bool
+		wantErr   string
+	}{
+		{
+			name: "app_auth_no_owner",
+			raw: map[string]any{
+				"auth_mode":     "app",
+				"legacy_client": false,
+				"app_auth":      appAuth("111111", "999999", pem),
+			},
+		},
+		{
+			name: "legacy_client_app_auth_no_owner",
+			raw: map[string]any{
+				"auth_mode":     "app",
+				"legacy_client": true,
+				"app_auth":      appAuth("111111", "999999", pem),
+			},
+		},
+		{
+			name:     "app_auth_with_owner",
+			userResp: new(`{"id": 123456, "type": "Organization"}`),
+			raw: map[string]any{
+				"auth_mode":     "app",
+				"legacy_client": false,
+				"owner":         "test-org",
+				"app_auth":      appAuth("111111", "999999", pem),
+			},
+			wantName:  "test-org",
+			wantIsOrg: true,
+		},
+		{
+			name: "app_auth_mode_missing_fields",
+			raw: map[string]any{
+				"auth_mode": "app",
+			},
+			wantErr: "auth_mode is set to app but required fields for github app authentication are missing or contain empty values",
+		},
+		{
+			name: "app_auth_block_incomplete",
+			raw: map[string]any{
+				"auth_mode": "auto",
+				"app_auth":  appAuth("111111", "", ""),
+			},
+			wantErr: "app_auth block is set but required fields are missing or contains empty values",
+		},
+		{
+			name: "token_mode_no_token",
+			raw: map[string]any{
+				"auth_mode":      "token",
+				"token_env_name": "GITHUB_TOKEN_TEST_UNSET",
+			},
+			wantErr: "auth_mode is set to token but no token was provided",
+		},
+	} {
+		t.Run(tt.name, func(t *testing.T) { //nolint:paralleltest
+			// configureProvider falls back to the environment for the owner, the token and the app credentials, so isolate the test from whatever the developer or CI has set.
+			t.Setenv("GITHUB_OWNER", "")
+			t.Setenv("GITHUB_ORGANIZATION", "")
+			t.Setenv("GITHUB_TOKEN", "")
+			t.Setenv("GITHUB_APP_ID", "")
+			t.Setenv("GITHUB_APP_INSTALLATION_ID", "")
+			t.Setenv("GITHUB_APP_PEM_FILE", "")
+
+			ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				if regexp.MustCompile(`/access_tokens$`).MatchString(r.URL.Path) {
+					w.WriteHeader(http.StatusCreated)
+					_, _ = w.Write([]byte(`{"token": "test-token", "expires_at": "2024-12-31T23:59:59Z"}`))
+					return
+				}
+
+				// Any owner based installation lookup is a bug when no owner is configured.
+				if regexp.MustCompile(`/installation$`).MatchString(r.URL.Path) {
+					w.WriteHeader(http.StatusOK)
+					_, _ = w.Write([]byte(`{"id": 999999}`))
+					return
+				}
+
+				if regexp.MustCompile(`/users/[^/]+$`).MatchString(r.URL.Path) && tt.userResp != nil {
+					w.WriteHeader(http.StatusOK)
+					_, _ = w.Write([]byte(*tt.userResp))
+					return
+				}
+
+				w.WriteHeader(http.StatusNotFound)
+			}))
+			t.Cleanup(ts.Close)
+
+			raw := map[string]any{
+				"base_url":            ts.URL,
+				"app_auth_env_prefix": "GITHUB_APP_",
+				"token_env_name":      "GITHUB_TOKEN",
+			}
+			maps.Copy(raw, tt.raw)
+
+			p := NewProvider("test", "none")()
+			d := schema.TestResourceDataRaw(t, p.Schema, raw)
+
+			meta, diags := configureProvider("test", "none")(t.Context(), d)
+			if diags.HasError() {
+				if tt.wantErr == "" {
+					t.Fatalf("unexpected error: %v", diags)
+				}
+
+				if !strings.Contains(diags[0].Summary, tt.wantErr) {
+					t.Fatalf("expected error to contain %q, got %q", tt.wantErr, diags[0].Summary)
+				}
+
+				return
+			}
+
+			if tt.wantErr != "" {
+				t.Fatalf("expected error %q, got nil", tt.wantErr)
+			}
+
+			owner, ok := meta.(*Owner)
+			if !ok {
+				t.Fatalf("expected meta to be an *Owner, got %T", meta)
+			}
+
+			if owner.name != tt.wantName {
+				t.Errorf("expected owner name to be %q, got %q", tt.wantName, owner.name)
+			}
+
+			if owner.IsOrganization != tt.wantIsOrg {
+				t.Errorf("expected IsOrganization to be %v, got %v", tt.wantIsOrg, owner.IsOrganization)
+			}
+
+			if owner.v3client == nil || owner.v4client == nil {
+				t.Error("expected both clients to be non-nil")
 			}
 		})
 	}
