@@ -164,6 +164,9 @@ The overall status of each resource or data source is captured in this document 
 | `github_enterprise_member` | ❓ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ |
 | `github_enterprise_organization` | ❓ | ❓ | ❓ | ❓ | ❓ | ❓ | ❓ |
 | `github_enterprise_security_analysis_settings` | ❓ | ❓ | ❓ | ❓ | ❓ | ❓ | ❓ |
+| `github_enterprise_team` | ❓ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ |
+| `github_enterprise_team_members` | ❓ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ |
+| `github_enterprise_team_organizations` | ❓ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ |
 | `github_issue` | ❓ | ❓ | ❓ | ❓ | ❓ | ❓ | ❓ |
 | `github_issue_label` | ❓ | ❓ | ❓ | ❓ | ❓ | ❓ | ❓ |
 | `github_issue_labels` | ❓ | ❓ | ❓ | ❓ | ❓ | ❓ | ❓ |
