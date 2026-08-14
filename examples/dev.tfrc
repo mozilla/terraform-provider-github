@@ -1,6 +1,6 @@
 provider_installation {
   dev_overrides {
-    "integrations/github" = "$HOME/go/bin/"
+    "mozilla/github" = "$HOME/go/bin/"
   }
 
   direct {

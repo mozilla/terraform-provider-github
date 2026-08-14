@@ -14,7 +14,7 @@ var (
 
 func main() {
 	opts := &plugin.ServeOpts{
-		ProviderAddr: "registry.terraform.io/integrations/github",
+		ProviderAddr: "registry.terraform.io/mozilla/github",
 		ProviderFunc: github.NewProvider(version, commit),
 	}
 
