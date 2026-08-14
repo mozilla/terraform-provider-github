@@ -12,12 +12,12 @@ type Source interface {
 	// RESTClient returns the default GitHub client for the source.
 	RESTClient() (*github.Client, error)
 
-	// OwnerRESTClient returns a GitHub client authenticated to access resources owned by the specified owner (which can be either a user or an organization). This method is only applicable for app and token sources.
+	// OwnerRESTClient returns a GitHub client authenticated to access resources owned by the specified owner (which can be either a user or an organization). This method is only applicable for app and token sources. An empty owner means the source's default identity; for an app source that's the explicitly configured installation, which supports an app installed at the enterprise level.
 	OwnerRESTClient(ctx context.Context, owner string) (*github.Client, error)
 
 	// GraphQLClient returns the default GitHub GraphQL client for the source.
 	GraphQLClient() (*githubv4.Client, error)
 
-	// OwnerGraphQLClient returns a GitHub GraphQL client authenticated to access resources owned by the specified owner (which can be either a user or an organization). This method is only applicable for app and token sources.
+	// OwnerGraphQLClient returns a GitHub GraphQL client authenticated to access resources owned by the specified owner (which can be either a user or an organization). This method is only applicable for app and token sources. An empty owner means the source's default identity; for an app source that's the explicitly configured installation, which supports an app installed at the enterprise level.
 	OwnerGraphQLClient(ctx context.Context, owner string) (*githubv4.Client, error)
 }

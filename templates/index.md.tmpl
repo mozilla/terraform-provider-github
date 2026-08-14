@@ -39,7 +39,7 @@ The GitHub provider can be authenticated with the GitHub API via a GitHub App, a
 
 ### GitHub App Installation
 
-GitHub App authentication requires the `owner` argument to be set and is supported by the `app_auth` provider configuration block and/or the related environment variables. Authenticating the provider with a GitHub App requires all three `app_auth` arguments to be set; `id`, `installation_id`, and `pem_file`. If you want to make sure that the provider is using GitHub App authentication, you can set the `auth_mode` argument to `app` (setting the `app_auth` block also requires the provider to use GitHub App authentication). When using environment variables the provider defaults to using the `GITHUB_APP_` prefix, but this can be overridden with the `app_auth_env_prefix` argument.
+GitHub App authentication is supported by the `app_auth` provider configuration block and/or the related environment variables. Authenticating the provider with a GitHub App requires all three `app_auth` arguments to be set; `id`, `installation_id`, and `pem_file`. The `owner` argument is optional for GitHub App authentication; see [enterprise installations](#enterprise-installation) below. If you want to make sure that the provider is using GitHub App authentication, you can set the `auth_mode` argument to `app` (setting the `app_auth` block also requires the provider to use GitHub App authentication). When using environment variables the provider defaults to using the `GITHUB_APP_` prefix, but this can be overridden with the `app_auth_env_prefix` argument.
 
 By default, the provider will look for the following environment variables: `GITHUB_APP_ID`, `GITHUB_APP_INSTALLATION_ID`, and `GITHUB_APP_PEM_FILE`. If you want to use a different prefix, you can set the `app_auth_env_prefix` argument to the desired prefix. For example, if you set `app_auth_env_prefix = "MYAPP_"`, the provider will look for the following environment variables: `MYAPP_ID`, `MYAPP_INSTALLATION_ID`, and `MYAPP_PEM_FILE`. This is useful if you want to use multiple GitHub providers authenticating with different GitHub Apps.
 
@@ -60,6 +60,14 @@ Some API operations may not be available when using a GitHub App installation co
 {{ codefile "shell" "examples/provider/app_auth_mixed/.env" }}
 
 {{ tffile "examples/provider/app_auth_mixed/main.tf" }}
+
+#### Enterprise installation
+
+A GitHub App installed at the enterprise level is not scoped to a single organization or user account, so there is no meaningful `owner` to configure. Omitting `owner` is supported for GitHub App authentication; the provider then authenticates directly as the installation identified by `installation_id` instead of resolving an installation from the owner.
+
+~> With no `owner` set, only resources that are not scoped to an owner — such as the `github_enterprise_*` resources, which take their own `enterprise_slug` argument — can be used. Any owner scoped resource will fail because there is no owner to act on.
+
+{{ tffile "examples/provider/app_auth_enterprise/main.tf" }}
 
 ### OAuth or Personal Access Token (PAT)
 

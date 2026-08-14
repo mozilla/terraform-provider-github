@@ -9,6 +9,7 @@ import (
 	"os/exec"
 	"path/filepath"
 	"runtime"
+	"strconv"
 	"strings"
 	"time"
 
@@ -44,7 +45,7 @@ func NewProvider(version, commit string) func() *schema.Provider {
 					Type:        schema.TypeString,
 					Optional:    true,
 					DefaultFunc: schema.EnvDefaultFunc("GITHUB_OWNER", nil),
-					Description: "GitHub organization or user account to manage; this is required when authenticating using a GitHub App. If the owner is not provided and a token is provided, the provider will attempt to auto-detect the owner associated with the token. This can also be set by the `GITHUB_OWNER` environment variable.",
+					Description: "GitHub organization or user account to manage. If the owner is not provided and a token is provided, the provider will attempt to auto-detect the owner associated with the token. When authenticating using a GitHub App the owner is optional, which supports an app installed at the enterprise level; in that case the provider authenticates directly as the installation identified by `app_auth.installation_id` and only resources that aren't scoped to an owner, such as the enterprise resources, can be used. This can also be set by the `GITHUB_OWNER` environment variable.",
 				},
 				"organization": {
 					Type:        schema.TypeString,
@@ -423,7 +424,7 @@ func configureProvider(version, commit string) func(context.Context, *schema.Res
 			}
 
 			if config.AppID != nil && config.Owner == "" {
-				return nil, diag.Errorf("owner must be set for github app authentication")
+				tflog.Warn(ctx, "No owner is set for GitHub App authentication; the configured installation will be used directly and only resources that aren't scoped to an owner, such as the enterprise resources, will be usable.", map[string]any{"app_installation_id": config.AppInstallationID})
 			}
 		}
 
@@ -590,7 +591,8 @@ func configureProviderMeta(ctx context.Context, version string, c *Config) (*Own
 		}
 		owner.v4client = v4client
 
-		if owner.name == "" && c.Token != "" {
+		// A token minted from a GitHub App installation can't call `GET /user`, and the installation isn't necessarily scoped to a single owner, so owner auto-detection is token authentication only.
+		if owner.name == "" && c.Token != "" && c.AppID == nil {
 			user, _, err := owner.v3client.Users.Get(ctx, "")
 			if err != nil {
 				return nil, fmt.Errorf("owner cannot be found by token: %w", err)
@@ -598,7 +600,8 @@ func configureProviderMeta(ctx context.Context, version string, c *Config) (*Own
 			owner.name = user.GetLogin()
 		}
 	} else {
-		if !c.Anonymous() && owner.name == "" {
+		// Only token authentication requires an owner up front; the app source can authenticate as the configured installation and the anonymous source has no owner scoping at all.
+		if c.AppID == nil && c.Token != "" && owner.name == "" {
 			return nil, fmt.Errorf("owner must be set when authenticating using the new client implementation")
 		}
 
@@ -620,7 +623,16 @@ func configureProviderMeta(ctx context.Context, version string, c *Config) (*Own
 
 		var source ghclient.Source
 		if c.AppID != nil {
-			appSource, err := ghclient.NewAppSource(*c.AppID, c.AppPEM, options)
+			var installationID *int64
+			if c.AppInstallationID != nil {
+				id, err := strconv.ParseInt(*c.AppInstallationID, 10, 64)
+				if err != nil {
+					return nil, fmt.Errorf("invalid app installation id %q: %w", *c.AppInstallationID, err)
+				}
+				installationID = &id
+			}
+
+			appSource, err := ghclient.NewAppSource(*c.AppID, c.AppPEM, installationID, options)
 			if err != nil {
 				return nil, fmt.Errorf("failed to create app source: %w", err)
 			}

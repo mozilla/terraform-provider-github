@@ -2,6 +2,7 @@ package ghclient
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"net/http"
 	"os"
@@ -15,18 +16,25 @@ import (
 // appClientCacheSize defines the maximum number of app clients to cache in the appSource. This is used to limit memory usage while still providing efficient access to clients for different owners.
 const appClientCacheSize = 8
 
+// Cache keys for the clients that aren't scoped to a named owner. A GitHub login can't contain an underscore, so these can never collide with an owner key.
+const (
+	appClientCacheKey          = "_app"
+	installationClientCacheKey = "_installation"
+)
+
 // appSource is a concrete implementation of a [Source] that uses the provided app credentials to create GitHub clients.
 type appSource struct {
 	clientID           string
 	privateKey         []byte
+	installationID     *int64
 	semaCache          *lru.Cache[string, *semaphore.Weighted]
 	restClientCache    *lru.Cache[string, *github.Client]
 	graphQLClientCache *lru.Cache[string, *githubv4.Client]
 	opts               SourceOptions
 }
 
-// NewAppSource creates a new appSource that provides GitHub clients authenticated as either the app itself or as an installation.
-func NewAppSource(clientID string, privateKey []byte, opts SourceOptions) (*appSource, error) {
+// NewAppSource creates a new appSource that provides GitHub clients authenticated as either the app itself or as an installation. The installationID is optional and is only used when a client is requested without an owner, which is the case for an app installed at the enterprise level.
+func NewAppSource(clientID string, privateKey []byte, installationID *int64, opts SourceOptions) (*appSource, error) {
 	semaCache, err := lru.New[string, *semaphore.Weighted](appClientCacheSize)
 	if err != nil {
 		return nil, err
@@ -53,6 +61,7 @@ func NewAppSource(clientID string, privateKey []byte, opts SourceOptions) (*appS
 	return &appSource{
 		clientID:           clientID,
 		privateKey:         privateKey,
+		installationID:     installationID,
 		semaCache:          semaCache,
 		restClientCache:    restClientCache,
 		graphQLClientCache: graphQLClientCache,
@@ -62,7 +71,7 @@ func NewAppSource(clientID string, privateKey []byte, opts SourceOptions) (*appS
 
 // RESTClient returns the default GitHub client for the app source, which is an authenticated client with access to resources based on the app's permissions.
 func (s *appSource) RESTClient() (*github.Client, error) {
-	key := "_"
+	key := appClientCacheKey
 	if c, ok := s.restClientCache.Get(key); ok {
 		return c, nil
 	}
@@ -82,9 +91,13 @@ func (s *appSource) RESTClient() (*github.Client, error) {
 	return c, nil
 }
 
-// OwnerRESTClient returns a GitHub client authenticated to access resources owned by the specified owner. It creates a client for the installation associated with the owner, if available, or falls back to the default app client if no specific installation is found.
+// OwnerRESTClient returns a GitHub client authenticated to access resources owned by the specified owner. It creates a client for the installation associated with the owner, if available, or falls back to the default app client if no specific installation is found. An empty owner is valid and resolves to the explicitly configured installation, which supports an app installed at the enterprise level.
 func (s *appSource) OwnerRESTClient(ctx context.Context, owner string) (*github.Client, error) {
 	key := owner
+	if key == "" {
+		key = installationClientCacheKey
+	}
+
 	if c, ok := s.restClientCache.Get(key); ok {
 		return c, nil
 	}
@@ -95,12 +108,18 @@ func (s *appSource) OwnerRESTClient(ctx context.Context, owner string) (*github.
 		s.semaCache.Add(key, sema)
 	}
 
-	installationID, err := s.GetInstallationID(ctx, owner)
+	installationID, err := s.installationIDForOwner(ctx, owner)
 	if err != nil {
-		return nil, fmt.Errorf("failed to get installation id for owner %q: %w", owner, err)
+		return nil, err
 	}
 
-	c, err := NewAppRESTClient(s.clientID, s.privateKey, installationID, s.opts.getRESTClientOptions(sema, fmt.Sprintf("app-rest-%s-%s", s.clientID, owner)))
+	// The cache ref must never be shared across authenticated identities, and the owner scoped ref is kept as-is so that existing on-disk caches remain valid.
+	cacheRef := fmt.Sprintf("app-rest-%s-installation-%d", s.clientID, *installationID)
+	if owner != "" {
+		cacheRef = fmt.Sprintf("app-rest-%s-%s", s.clientID, owner)
+	}
+
+	c, err := NewAppRESTClient(s.clientID, s.privateKey, installationID, s.opts.getRESTClientOptions(sema, cacheRef))
 	if err != nil {
 		return nil, fmt.Errorf("failed to create app client for owner %q: %w", owner, err)
 	}
@@ -111,7 +130,7 @@ func (s *appSource) OwnerRESTClient(ctx context.Context, owner string) (*github.
 
 // GraphQLClient returns the default GitHub GraphQL client for the app source, which is an authenticated client with access to resources based on the app's permissions.
 func (s *appSource) GraphQLClient() (*githubv4.Client, error) {
-	key := "_"
+	key := appClientCacheKey
 	if c, ok := s.graphQLClientCache.Get(key); ok {
 		return c, nil
 	}
@@ -131,9 +150,13 @@ func (s *appSource) GraphQLClient() (*githubv4.Client, error) {
 	return c, nil
 }
 
-// OwnerGraphQLClient returns a GitHub GraphQL client authenticated to access resources owned by the specified owner. It creates a client for the installation associated with the owner, if available, or falls back to the default app client if no specific installation is found.
+// OwnerGraphQLClient returns a GitHub GraphQL client authenticated to access resources owned by the specified owner. It creates a client for the installation associated with the owner, if available, or falls back to the default app client if no specific installation is found. An empty owner is valid and resolves to the explicitly configured installation, which supports an app installed at the enterprise level.
 func (s *appSource) OwnerGraphQLClient(ctx context.Context, owner string) (*githubv4.Client, error) {
 	key := owner
+	if key == "" {
+		key = installationClientCacheKey
+	}
+
 	if c, ok := s.graphQLClientCache.Get(key); ok {
 		return c, nil
 	}
@@ -144,9 +167,9 @@ func (s *appSource) OwnerGraphQLClient(ctx context.Context, owner string) (*gith
 		s.semaCache.Add(key, sema)
 	}
 
-	installationID, err := s.GetInstallationID(ctx, owner)
+	installationID, err := s.installationIDForOwner(ctx, owner)
 	if err != nil {
-		return nil, fmt.Errorf("failed to get installation id for owner %q: %w", owner, err)
+		return nil, err
 	}
 
 	c, err := NewAppGraphQLClient(s.clientID, s.privateKey, installationID, s.opts.getGraphQLClientOptions(sema))
@@ -156,6 +179,24 @@ func (s *appSource) OwnerGraphQLClient(ctx context.Context, owner string) (*gith
 	s.graphQLClientCache.Add(key, c)
 
 	return c, nil
+}
+
+// installationIDForOwner resolves the installation to use for the specified owner. When the owner is empty the explicitly configured installation is used, which supports an app installation that isn't scoped to a single owner, such as an enterprise level installation.
+func (s *appSource) installationIDForOwner(ctx context.Context, owner string) (*int64, error) {
+	if owner == "" {
+		if s.installationID == nil {
+			return nil, errors.New("an app installation id is required when no owner is set")
+		}
+
+		return s.installationID, nil
+	}
+
+	installationID, err := s.GetInstallationID(ctx, owner)
+	if err != nil {
+		return nil, fmt.Errorf("failed to get installation id for owner %q: %w", owner, err)
+	}
+
+	return installationID, nil
 }
 
 // GetInstallationID retrieves the installation ID for the specified owner (which can be either a user or an organization). It first attempts to find an organization installation, and if that fails, it tries to find a user installation. If neither is found, it returns an error.
