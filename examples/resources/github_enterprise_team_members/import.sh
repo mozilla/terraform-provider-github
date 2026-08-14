@@ -1,0 +1,1 @@
+terraform import github_enterprise_team_members.platform my-enterprise:ent:platform
