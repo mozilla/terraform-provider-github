@@ -36,6 +36,14 @@
 
 **Reference:** <https://github.com/integrations/terraform-provider-github/issues/3116>
 
+### Optional Owner for GitHub App Authentication
+
+**Decision:** The `owner` argument is optional when authenticating with a GitHub App. With no owner set, the provider authenticates as the installation identified by `app_auth.installation_id` rather than resolving an installation from the owner.
+
+**Rationale:** A GitHub App installed at the enterprise level is not scoped to a single organization or user account, so requiring an owner forced users to invent one. `app_auth.installation_id` is already mandatory for App authentication, so the installation is always known without any new configuration surface. Only resources that are not scoped to an owner, such as the enterprise resources, are usable in this mode.
+
+**Reference:** <https://github.com/integrations/terraform-provider-github/issues/2886>
+
 ### Transport Layer Rework
 
 **Decision:** Rework the transport layer to utilize:

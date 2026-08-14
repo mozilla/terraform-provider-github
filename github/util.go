@@ -93,7 +93,14 @@ func parseID4(id string) (string, string, string, string, error) {
 	return parts[0], parts[1], parts[2], parts[3], nil
 }
 
+// errOwnerNotSet is returned when a resource that's scoped to an owner is used with a provider configuration that has no owner. This is only reachable when authenticating with a GitHub App, where the owner is optional so that an enterprise level installation can be used.
+const errOwnerNotSet = "the provider `owner` argument is not set; it is required for this resource and is only optional when authenticating with a GitHub App that isn't scoped to a single owner, such as an enterprise level installation"
+
 func checkOrganizationOK(meta *Owner) (bool, diag.Diagnostics) {
+	if meta.name == "" {
+		return false, diag.Errorf("%s", errOwnerNotSet)
+	}
+
 	if !meta.IsOrganization {
 		return false, diag.Errorf("this resource can only be used in the context of an organization, %q is a user", meta.name)
 	}
@@ -102,8 +109,14 @@ func checkOrganizationOK(meta *Owner) (bool, diag.Diagnostics) {
 }
 
 func checkOrganization(meta any) error {
-	if !meta.(*Owner).IsOrganization {
-		return fmt.Errorf("this resource can only be used in the context of an organization, %q is a user", meta.(*Owner).name)
+	owner := meta.(*Owner)
+
+	if owner.name == "" {
+		return errors.New(errOwnerNotSet)
+	}
+
+	if !owner.IsOrganization {
+		return fmt.Errorf("this resource can only be used in the context of an organization, %q is a user", owner.name)
 	}
 
 	return nil

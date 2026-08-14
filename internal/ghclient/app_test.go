@@ -20,12 +20,18 @@ func TestNewAppSource(t *testing.T) {
 	})
 
 	for _, tt := range []struct {
-		name string
-		opts SourceOptions
+		name           string
+		installationID *int64
+		opts           SourceOptions
 	}{
 		{
 			name: "default",
 			opts: SourceOptions{},
+		},
+		{
+			name:           "with_installation_id",
+			installationID: new(int64(1000)),
+			opts:           SourceOptions{},
 		},
 		{
 			name: "with_cache_base_path",
@@ -44,7 +50,7 @@ func TestNewAppSource(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
 
-			source, err := NewAppSource("123456789", privateKeyData, tt.opts)
+			source, err := NewAppSource("123456789", privateKeyData, tt.installationID, tt.opts)
 			if err != nil {
 				t.Fatalf("failed to create app source: %v", err)
 			}
@@ -81,7 +87,7 @@ func Test_appSource(t *testing.T) {
 	ts := httptest.NewServer(handler)
 	t.Cleanup(ts.Close)
 
-	source, err := NewAppSource("123456789", mustReadAppPrivateKey(t), SourceOptions{BaseURL: ts.URL})
+	source, err := NewAppSource("123456789", mustReadAppPrivateKey(t), nil, SourceOptions{BaseURL: ts.URL})
 	if err != nil {
 		t.Fatalf("failed to create app source: %v", err)
 	}
@@ -164,5 +170,100 @@ func Test_appSource(t *testing.T) {
 
 	if ownerGraphQLClientFirst == ownerGraphQLClientSecond {
 		t.Fatal("expected different owner graphql clients for different owners")
+	}
+}
+
+// Test_appSource_noOwner covers an app installed at the enterprise level, where there is no owner to resolve an installation from and the explicitly configured installation must be used instead. The test server fails the test on any request at all, so any attempt to resolve the installation over the API is caught.
+func Test_appSource_noOwner(t *testing.T) {
+	t.Parallel()
+
+	handler := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		t.Errorf("unexpected request to %s; the configured installation id should be used without a lookup", r.URL.Path)
+		w.WriteHeader(http.StatusNotFound)
+	})
+
+	ts := httptest.NewServer(handler)
+	t.Cleanup(ts.Close)
+
+	source, err := NewAppSource("123456789", mustReadAppPrivateKey(t), new(int64(1000)), SourceOptions{BaseURL: ts.URL})
+	if err != nil {
+		t.Fatalf("failed to create app source: %v", err)
+	}
+
+	restClient, err := source.OwnerRESTClient(t.Context(), "")
+	if err != nil {
+		t.Fatalf("failed to get rest client without an owner: %v", err)
+	}
+
+	if restClient == nil {
+		t.Fatal("expected rest client to be non-nil")
+	}
+
+	restClientAgain, err := source.OwnerRESTClient(t.Context(), "")
+	if err != nil {
+		t.Fatalf("failed to get rest client without an owner again: %v", err)
+	}
+
+	if restClientAgain != restClient {
+		t.Fatal("expected rest client without an owner to be cached and reused")
+	}
+
+	appRESTClient, err := source.RESTClient()
+	if err != nil {
+		t.Fatalf("failed to get app rest client: %v", err)
+	}
+
+	if appRESTClient == restClient {
+		t.Fatal("expected the app rest client to be distinct from the installation rest client")
+	}
+
+	graphQLClient, err := source.OwnerGraphQLClient(t.Context(), "")
+	if err != nil {
+		t.Fatalf("failed to get graphql client without an owner: %v", err)
+	}
+
+	if graphQLClient == nil {
+		t.Fatal("expected graphql client to be non-nil")
+	}
+
+	graphQLClientAgain, err := source.OwnerGraphQLClient(t.Context(), "")
+	if err != nil {
+		t.Fatalf("failed to get graphql client without an owner again: %v", err)
+	}
+
+	if graphQLClientAgain != graphQLClient {
+		t.Fatal("expected graphql client without an owner to be cached and reused")
+	}
+
+	appGraphQLClient, err := source.GraphQLClient()
+	if err != nil {
+		t.Fatalf("failed to get app graphql client: %v", err)
+	}
+
+	if appGraphQLClient == graphQLClient {
+		t.Fatal("expected the app graphql client to be distinct from the installation graphql client")
+	}
+}
+
+func Test_appSource_noOwnerOrInstallationID(t *testing.T) {
+	t.Parallel()
+
+	source, err := NewAppSource("123456789", mustReadAppPrivateKey(t), nil, SourceOptions{})
+	if err != nil {
+		t.Fatalf("failed to create app source: %v", err)
+	}
+
+	wantErr := "an app installation id is required when no owner is set"
+
+	if _, err := source.OwnerRESTClient(t.Context(), ""); err == nil {
+		t.Fatal("expected an error getting a rest client with no owner and no installation id")
+	} else if !strings.Contains(err.Error(), wantErr) {
+		t.Fatalf("expected error to contain %q, got %v", wantErr, err)
+	}
+
+	if _, err := source.OwnerGraphQLClient(t.Context(), ""); err == nil {
+		t.Fatal("expected an error getting a graphql client with no owner and no installation id")
+	} else if !strings.Contains(err.Error(), wantErr) {
+		t.Fatalf("expected error to contain %q, got %v", wantErr, err)
 	}
 }

@@ -53,7 +53,7 @@ The GitHub provider can be authenticated with the GitHub API via a GitHub App, a
 
 ### GitHub App Installation
 
-GitHub App authentication requires the `owner` argument to be set and is supported by the `app_auth` provider configuration block and/or the related environment variables. Authenticating the provider with a GitHub App requires all three `app_auth` arguments to be set; `id`, `installation_id`, and `pem_file`. If you want to make sure that the provider is using GitHub App authentication, you can set the `auth_mode` argument to `app` (setting the `app_auth` block also requires the provider to use GitHub App authentication). When using environment variables the provider defaults to using the `GITHUB_APP_` prefix, but this can be overridden with the `app_auth_env_prefix` argument.
+GitHub App authentication is supported by the `app_auth` provider configuration block and/or the related environment variables. Authenticating the provider with a GitHub App requires all three `app_auth` arguments to be set; `id`, `installation_id`, and `pem_file`. The `owner` argument is optional for GitHub App authentication; see [enterprise installations](#enterprise-installation) below. If you want to make sure that the provider is using GitHub App authentication, you can set the `auth_mode` argument to `app` (setting the `app_auth` block also requires the provider to use GitHub App authentication). When using environment variables the provider defaults to using the `GITHUB_APP_` prefix, but this can be overridden with the `app_auth_env_prefix` argument.
 
 By default, the provider will look for the following environment variables: `GITHUB_APP_ID`, `GITHUB_APP_INSTALLATION_ID`, and `GITHUB_APP_PEM_FILE`. If you want to use a different prefix, you can set the `app_auth_env_prefix` argument to the desired prefix. For example, if you set `app_auth_env_prefix = "MYAPP_"`, the provider will look for the following environment variables: `MYAPP_ID`, `MYAPP_INSTALLATION_ID`, and `MYAPP_PEM_FILE`. This is useful if you want to use multiple GitHub providers authenticating with different GitHub Apps.
 
@@ -112,6 +112,39 @@ provider "github" {
 }
 ```
 
+#### Enterprise installation
+
+A GitHub App installed at the enterprise level is not scoped to a single organization or user account, so there is no meaningful `owner` to configure. Omitting `owner` is supported for GitHub App authentication; the provider then authenticates directly as the installation identified by `installation_id` instead of resolving an installation from the owner.
+
+~> With no `owner` set, only resources that are not scoped to an owner — such as the `github_enterprise_*` resources, which take their own `enterprise_slug` argument — can be used. Any owner scoped resource will fail because there is no owner to act on.
+
+```terraform
+# A GitHub App installed at the enterprise level is not scoped to a single
+# organization or user account, so `owner` is omitted and the provider
+# authenticates directly as the configured installation.
+provider "github" {
+  auth_mode = "app" # or `GITHUB_AUTH_MODE=app`
+
+  app_auth {
+    id              = var.app_id              # or `GITHUB_APP_ID`
+    installation_id = var.app_installation_id # or `GITHUB_APP_INSTALLATION_ID`
+    pem_file        = var.app_pem_file        # or `GITHUB_APP_PEM_FILE`
+  }
+}
+
+# Only resources that are not scoped to an owner can be used; these identify the
+# enterprise themselves rather than relying on the provider's `owner`.
+data "github_enterprise" "example" {
+  slug = var.enterprise_slug
+}
+
+resource "github_enterprise_actions_permissions" "example" {
+  enterprise_slug       = data.github_enterprise.example.slug
+  allowed_actions       = "all"
+  enabled_organizations = "all"
+}
+```
+
 ### OAuth or Personal Access Token (PAT)
 
 To authenticate using OAuth tokens, ensure that the `token` argument or the `GITHUB_TOKEN` environment variable is set.
@@ -160,7 +193,7 @@ provider "github" {
 - `max_per_page` (Number) The maximum number of results per page for paginated API requests; this defaults to `100`. This can also be set by the `GITHUB_MAX_PER_PAGE` environment variable.
 - `max_retries` (Number) The maximum number of retries for failed requests; this defaults to `3`.
 - `organization` (String, Deprecated) GitHub organization to manage. This can also be set by the `GITHUB_ORGANIZATION` environment variable.
-- `owner` (String) GitHub organization or user account to manage; this is required when authenticating using a GitHub App. If the owner is not provided and a token is provided, the provider will attempt to auto-detect the owner associated with the token. This can also be set by the `GITHUB_OWNER` environment variable.
+- `owner` (String) GitHub organization or user account to manage. If the owner is not provided and a token is provided, the provider will attempt to auto-detect the owner associated with the token. When authenticating using a GitHub App the owner is optional, which supports an app installed at the enterprise level; in that case the provider authenticates directly as the installation identified by `app_auth.installation_id` and only resources that aren't scoped to an owner, such as the enterprise resources, can be used. This can also be set by the `GITHUB_OWNER` environment variable.
 - `parallel_requests` (Boolean) Allow the provider to make parallel API calls; this is experimental and may cause concurrency and rate limiting issues. This is ignored for the REST API when `legacy_client` is `false` since the new client implementation is designed to safely handle parallel requests.
 - `read_delay_ms` (Number) The delay in milliseconds between read operations; this defaults to `0`. This can be used to mitigate rate limiting issues when performing a large number of read operations. This is ignored for the REST API when `legacy_client` is `false` since the new client implementation is GitHub rate limit aware.
 - `retry_delay_ms` (Number) The delay in milliseconds between retry attempts; this defaults to `1000`. This setting only applies when `max_retries` is greater than `0`.
