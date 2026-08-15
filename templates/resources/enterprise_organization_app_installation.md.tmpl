@@ -1,0 +1,54 @@
+---
+page_title: "{{.Name}} ({{.Type}}) - {{.RenderedProviderName}}"
+description: |-
+{{ .Description | plainmarkdown | trimspace | prefixlines "  " }}
+---
+
+# {{.Name}} ({{.Type}})
+
+{{ .Description | trimspace }}
+
+This resource is only available on GitHub Enterprise Cloud, and on GitHub Enterprise Server 3.19 and later.
+
+~> The underlying API can only be called by a GitHub App installed on the enterprise that owns the organization. A personal access token cannot be used, even one belonging to an enterprise owner. Configure the provider for [app authentication](../index.md) with `app_auth.installation_id` set to that enterprise level installation, and leave `owner` unset.
+
+~> GitHub treats installing an app that is already installed as a success, and unsuspends it. Applying this resource against an organization where the app was installed by hand therefore adopts that installation silently, and a later `terraform destroy` uninstalls it. Import a pre-existing installation instead of adopting it.
+
+-> `selected_repositories` must be non-empty when `repository_selection` is `selected`, and must be empty when it is `all`. The API accepts installing an app with no repository access at all, but never reports that state back, so it is not expressible here.
+
+{{ if .HasExamples -}}
+## Example Usage
+
+{{- range .ExampleFiles }}
+
+{{ tffile . }}
+{{- end }}
+{{- end }}
+
+{{ .SchemaMarkdown | trimspace }}
+{{- if or .HasImport .HasImportIDConfig .HasImportIdentityConfig }}
+
+## Import
+
+App installations are imported using the enterprise slug, the organization login and the app's client ID, separated by colons.
+{{- end }}
+{{- if .HasImportIdentityConfig }}
+
+In Terraform v1.12.0 and later, the [`import` block](https://developer.hashicorp.com/terraform/language/import) can be used with the `identity` attribute, for example:
+
+{{tffile .ImportIdentityConfigFile }}
+
+{{ .IdentitySchemaMarkdown | trimspace }}
+{{- end }}
+{{- if .HasImportIDConfig }}
+
+In Terraform v1.5.0 and later, the [`import` block](https://developer.hashicorp.com/terraform/language/import) can be used with the `id` attribute, for example:
+
+{{tffile .ImportIDConfigFile }}
+{{- end }}
+{{- if .HasImport }}
+
+The [`terraform import` command](https://developer.hashicorp.com/terraform/cli/commands/import) can be used, for example:
+
+{{codefile "shell" .ImportFile }}
+{{- end }}

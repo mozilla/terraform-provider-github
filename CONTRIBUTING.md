@@ -264,6 +264,9 @@ export GH_TEST_EXTERNAL_USER2=
 export GH_TEST_ENTERPRISE_EMU_GROUP_ID=
 export GITHUB_ENTERPRISE_SLUG=
 
+# Configure the client ID of a GitHub App that can be installed on the enterprise's organizations
+export GH_TEST_ENTERPRISE_APP_CLIENT_ID=
+
 # Configure test options
 export GH_TEST_ADVANCED_SECURITY=
 
