@@ -47,8 +47,9 @@ type testAccConfig struct {
 	appPEM            string
 
 	// Enterprise configuration
-	enterpriseSlug  string
-	enterpriseIsEMU bool
+	enterpriseSlug      string
+	enterpriseIsEMU     bool
+	enterpriseAppClient string
 
 	// Global test configuration
 	testPublicRepository              string
@@ -186,6 +187,8 @@ func TestMain(m *testing.M) {
 			fmt.Println("GITHUB_ENTERPRISE_SLUG environment variable not set")
 			os.Exit(1)
 		}
+
+		conf.enterpriseAppClient = os.Getenv("GH_TEST_ENTERPRISE_APP_CLIENT_ID")
 
 		if os.Getenv("GH_TEST_ENTERPRISE_IS_EMU") == "true" {
 			conf.enterpriseIsEMU = true
@@ -374,6 +377,12 @@ func skipUnlessHasAppInstallations(t *testing.T) {
 
 	if len(installations.Installations) == 0 {
 		t.Skip("Skipping because no GitHub App installations found in the test organization")
+	}
+}
+
+func skipUnlessHasEnterpriseAppClient(t *testing.T) {
+	if testAccConf.enterpriseAppClient == "" {
+		t.Skip("Skipping as no enterprise app client ID is configured")
 	}
 }
 
