@@ -1,0 +1,1 @@
+terraform import github_enterprise_organization_app_installation.ci my-enterprise:my-organization:Iv23liAbCdEfGhIjKlMn
