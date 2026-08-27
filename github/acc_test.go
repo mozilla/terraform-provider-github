@@ -153,7 +153,10 @@ func TestMain(m *testing.M) {
 		conf.appInstallationID = os.Getenv("GITHUB_APP_INSTALLATION_ID")
 		conf.appPEM = os.Getenv("GITHUB_APP_PEM_FILE")
 
-		if len(conf.owner) == 0 {
+		// Enterprise-level GitHub App installations are not scoped to an organization or
+		// user, so enterprise tests using App auth must be able to configure the provider
+		// without an owner and authenticate directly with the installation ID.
+		if len(conf.owner) == 0 && (conf.authMode != enterprise || conf.appID == "") {
 			fmt.Println("GITHUB_OWNER environment variable not set")
 			os.Exit(1)
 		}
