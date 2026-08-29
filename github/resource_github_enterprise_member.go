@@ -16,6 +16,8 @@ const (
 	enterpriseMemberStatusPending = "pending"
 	// enterpriseMemberStatusActive means the user has accepted and is an enterprise member.
 	enterpriseMemberStatusActive = "active"
+	// enterpriseMemberStatusExpired means a previously managed invitation is no longer pending.
+	enterpriseMemberStatusExpired = "expired"
 )
 
 func resourceGithubEnterpriseMember() *schema.Resource {
@@ -25,6 +27,7 @@ func resourceGithubEnterpriseMember() *schema.Resource {
 			"removes the user from the enterprise if they have already accepted.",
 		CreateContext: resourceGithubEnterpriseMemberCreate,
 		ReadContext:   resourceGithubEnterpriseMemberRead,
+		UpdateContext: resourceGithubEnterpriseMemberUpdate,
 		DeleteContext: resourceGithubEnterpriseMemberDelete,
 		Importer: &schema.ResourceImporter{
 			StateContext: schema.ImportStatePassthroughContext,
@@ -44,15 +47,21 @@ func resourceGithubEnterpriseMember() *schema.Resource {
 				DiffSuppressFunc: caseInsensitive(),
 				Description:      "The login of the user to invite to the enterprise.",
 			},
+			"reinvite": {
+				Type:        schema.TypeBool,
+				Optional:    true,
+				Default:     true,
+				Description: "Whether to send a new invitation when a previously managed invitation is no longer pending.",
+			},
 			"status": {
 				Type:        schema.TypeString,
 				Computed:    true,
-				Description: "The state of the membership: 'pending' while the invitation is outstanding, or 'active' once it has been accepted.",
+				Description: "The state of the membership: 'pending' while the invitation is outstanding, 'active' once it has been accepted, or 'expired' when a missing invitation is retained because 'reinvite' is false.",
 			},
 			"invitation_id": {
 				Type:        schema.TypeString,
 				Computed:    true,
-				Description: "The node ID of the pending enterprise invitation. Empty once the invitation has been accepted.",
+				Description: "The node ID of the pending enterprise invitation. Empty once the invitation has been accepted or is no longer pending.",
 			},
 		},
 	}
@@ -65,7 +74,8 @@ type enterpriseMemberState struct {
 	// even if the user was not found.
 	enterpriseID string
 	// status is enterpriseMemberStatusPending, enterpriseMemberStatusActive, or empty when the
-	// user is neither invited nor a member.
+	// API reports that the user is neither invited nor a member. enterpriseMemberStatusExpired is
+	// a Terraform state value and is not returned by getEnterpriseMemberState.
 	status string
 	// login is the user's login as returned by the API, preserving its canonical casing.
 	login string
@@ -260,6 +270,21 @@ func resourceGithubEnterpriseMemberRead(ctx context.Context, d *schema.ResourceD
 	}
 
 	if state.status == "" {
+		invitationWasManaged := d.Get("invitation_id").(string) != "" || d.Get("status").(string) == enterpriseMemberStatusExpired
+		if !d.Get("reinvite").(bool) && invitationWasManaged {
+			tflog.Info(ctx, "Retaining expired enterprise invitation in state because reinvitation is disabled", map[string]any{
+				"enterprise_slug": enterpriseSlug,
+				"username":        username,
+			})
+			if err := d.Set("status", enterpriseMemberStatusExpired); err != nil {
+				return diag.FromErr(err)
+			}
+			if err := d.Set("invitation_id", ""); err != nil {
+				return diag.FromErr(err)
+			}
+			return nil
+		}
+
 		tflog.Info(ctx, "Removing enterprise member from state because they are neither a member nor an invitee", map[string]any{
 			"enterprise_slug": enterpriseSlug,
 			"username":        username,
@@ -282,6 +307,14 @@ func resourceGithubEnterpriseMemberRead(ctx context.Context, d *schema.ResourceD
 	}
 
 	return nil
+}
+
+func resourceGithubEnterpriseMemberUpdate(ctx context.Context, d *schema.ResourceData, meta any) diag.Diagnostics {
+	if d.Get("reinvite").(bool) {
+		return resourceGithubEnterpriseMemberCreate(ctx, d, meta)
+	}
+
+	return resourceGithubEnterpriseMemberRead(ctx, d, meta)
 }
 
 func resourceGithubEnterpriseMemberDelete(ctx context.Context, d *schema.ResourceData, meta any) diag.Diagnostics {
