@@ -14,6 +14,8 @@ This resource requires a token with enterprise owner permissions, and is only av
 
 ~> Creating this resource for someone who is already a pending invitee or an enterprise member adopts them rather than failing. Terraform then owns that membership, so a later destroy will remove them.
 
+By default, Terraform sends a new invitation on the next apply when a previously managed invitation is no longer pending. Set `reinvite = false` to retain the resource without sending another invitation. In that state, `status` is `expired` and `invitation_id` is empty. GitHub does not distinguish an expired invitation from one cancelled outside Terraform through this API, so `expired` indicates that the previously managed invitation is no longer pending.
+
 -> Enterprise Managed User (EMU) enterprises provision members through their identity provider and cannot invite users this way.
 
 {{ if .HasExamples -}}
