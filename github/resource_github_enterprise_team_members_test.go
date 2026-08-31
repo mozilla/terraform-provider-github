@@ -1,7 +1,11 @@
 package github
 
 import (
+	"encoding/json"
 	"fmt"
+	"net/http"
+	"net/http/httptest"
+	"slices"
 	"strings"
 	"testing"
 
@@ -10,6 +14,78 @@ import (
 	"github.com/hashicorp/terraform-plugin-testing/statecheck"
 	"github.com/hashicorp/terraform-plugin-testing/tfjsonpath"
 )
+
+func TestUpdateEnterpriseTeamMembersBatchesRequests(t *testing.T) {
+	t.Parallel()
+
+	members := make([]string, 0, 201)
+	for i := range 201 {
+		members = append(members, fmt.Sprintf("user-%03d", i))
+	}
+
+	tests := map[string]struct {
+		current      []string
+		want         []string
+		operationURL string
+	}{
+		"add": {
+			want:         members,
+			operationURL: "/enterprises/example/teams/example-team/memberships/add",
+		},
+		"remove": {
+			current:      members,
+			operationURL: "/enterprises/example/teams/example-team/memberships/remove",
+		},
+	}
+
+	for name, tc := range tests {
+		t.Run(name, func(t *testing.T) {
+			t.Parallel()
+
+			var batches [][]string
+			mux := http.NewServeMux()
+			mux.HandleFunc("/enterprises/example/teams/example-team/memberships", func(w http.ResponseWriter, _ *http.Request) {
+				users := make([]map[string]string, 0, len(tc.current))
+				for _, login := range tc.current {
+					users = append(users, map[string]string{"login": login})
+				}
+				if err := json.NewEncoder(w).Encode(users); err != nil {
+					t.Errorf("encode members response: %v", err)
+				}
+			})
+			mux.HandleFunc(tc.operationURL, func(w http.ResponseWriter, req *http.Request) {
+				var body struct {
+					Usernames []string `json:"usernames"`
+				}
+				if err := json.NewDecoder(req.Body).Decode(&body); err != nil {
+					t.Errorf("decode membership request: %v", err)
+				}
+				batches = append(batches, body.Usernames)
+				mustWrite(w, `[]`)
+			})
+
+			server := httptest.NewServer(mux)
+			defer server.Close()
+
+			meta := &Owner{v3client: mustCreateTestGitHubClient(t, server.URL+"/"), maxPerPage: 100}
+			if err := updateEnterpriseTeamMembers(t.Context(), meta, "example", "example-team", tc.want); err != nil {
+				t.Fatalf("updateEnterpriseTeamMembers() error = %v", err)
+			}
+
+			if got, want := len(batches), 3; got != want {
+				t.Fatalf("request count = %d, want %d", got, want)
+			}
+			for i, want := range []int{100, 100, 1} {
+				if got := len(batches[i]); got != want {
+					t.Errorf("batch %d length = %d, want %d", i, got, want)
+				}
+			}
+			if got := slices.Concat(batches...); !slices.Equal(got, members) {
+				t.Errorf("batched members = %v, want %v", got, members)
+			}
+		})
+	}
+}
 
 func TestAccGithubEnterpriseTeamMembers(t *testing.T) {
 	t.Parallel()
