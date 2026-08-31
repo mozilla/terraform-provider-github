@@ -12,6 +12,10 @@ import (
 	"github.com/hashicorp/terraform-plugin-sdk/v2/helper/validation"
 )
 
+// maxEnterpriseTeamMembersPerRequest is the number of usernames the enterprise team bulk
+// membership endpoints accept in a single request.
+const maxEnterpriseTeamMembersPerRequest = 100
+
 func resourceGithubEnterpriseTeamMembers() *schema.Resource {
 	return &schema.Resource{
 		Description: "Authoritatively manages the members of a GitHub enterprise team. Any member of the " +
@@ -146,9 +150,9 @@ func resourceGithubEnterpriseTeamMembersDelete(ctx context.Context, d *schema.Re
 	return nil
 }
 
-// updateEnterpriseTeamMembers reconciles the members of an enterprise team against want, adding
-// and removing in at most one bulk call each. The bulk endpoints are additive and subtractive
-// rather than a replacement, so the current membership has to be read first.
+// updateEnterpriseTeamMembers reconciles the members of an enterprise team against want. The bulk
+// endpoints are additive and subtractive rather than a replacement, so the current membership has
+// to be read first.
 func updateEnterpriseTeamMembers(ctx context.Context, meta *Owner, enterpriseSlug, teamSlug string, want []string) error {
 	client := meta.v3client
 
@@ -167,14 +171,14 @@ func updateEnterpriseTeamMembers(ctx context.Context, meta *Owner, enterpriseSlu
 		"remove":          remove,
 	})
 
-	if len(add) > 0 {
-		if _, _, err := client.Enterprise.BulkAddTeamMembers(ctx, enterpriseSlug, teamSlug, add); err != nil {
+	for batch := range slices.Chunk(add, maxEnterpriseTeamMembersPerRequest) {
+		if _, _, err := client.Enterprise.BulkAddTeamMembers(ctx, enterpriseSlug, teamSlug, batch); err != nil {
 			return fmt.Errorf("could not add members to enterprise team %q: %w", teamSlug, err)
 		}
 	}
 
-	if len(remove) > 0 {
-		if _, _, err := client.Enterprise.BulkRemoveTeamMembers(ctx, enterpriseSlug, teamSlug, remove); err != nil {
+	for batch := range slices.Chunk(remove, maxEnterpriseTeamMembersPerRequest) {
+		if _, _, err := client.Enterprise.BulkRemoveTeamMembers(ctx, enterpriseSlug, teamSlug, batch); err != nil {
 			return fmt.Errorf("could not remove members from enterprise team %q: %w", teamSlug, err)
 		}
 	}
