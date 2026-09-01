@@ -170,7 +170,8 @@ resource "github_enterprise_team_members" "test" {
 		t.Parallel()
 
 		team := mustCreateTestEnterpriseTeam(t)
-		// The set hash lowercases, so an upper-cased login must not plan as a change.
+		// Read preserves the configured spelling for a case-insensitive API match, so an
+		// upper-cased login must not appear as a refresh or planned change.
 		shouted := fmt.Sprintf(`["%s"]`, strings.ToUpper(testAccConf.testOrgUser1))
 
 		resource.Test(t, resource.TestCase{
