@@ -18,6 +18,7 @@ func TestEnterpriseTeamMissingFrom(t *testing.T) {
 		"nothing wanted":     {want: nil, have: []string{"alice"}, out: []string{}},
 		"nothing present":    {want: []string{"alice"}, have: nil, out: []string{"alice"}},
 		"fully overlapping":  {want: []string{"alice", "bob"}, have: []string{"bob", "alice"}, out: []string{}},
+		"casing is ignored":  {want: []string{"Alice"}, have: []string{"alice"}, out: []string{}},
 		"partial overlap":    {want: []string{"alice", "bob"}, have: []string{"alice"}, out: []string{"bob"}},
 		"disjoint":           {want: []string{"carol"}, have: []string{"alice"}, out: []string{"carol"}},
 		"extras are ignored": {want: []string{"alice"}, have: []string{"alice", "bob"}, out: []string{}},
@@ -32,6 +33,20 @@ func TestEnterpriseTeamMissingFrom(t *testing.T) {
 				t.Errorf("enterpriseTeamMissingFrom(%v, %v) = %v, want %v", tc.want, tc.have, got, tc.out)
 			}
 		})
+	}
+}
+
+func TestEnterpriseTeamPreserveSetValueCase(t *testing.T) {
+	t.Parallel()
+
+	d := schema.TestResourceDataRaw(t, resourceGithubEnterpriseTeamMembers().Schema, map[string]any{
+		"members": []any{"ALICE", "Bob"},
+	})
+
+	got := enterpriseTeamPreserveSetValueCase(d, "members", []string{"Alice", "bob", "NewUser"})
+	want := []string{"ALICE", "Bob", "NewUser"}
+	if !slices.Equal(got, want) {
+		t.Errorf("enterpriseTeamPreserveSetValueCase() = %v, want %v", got, want)
 	}
 }
 

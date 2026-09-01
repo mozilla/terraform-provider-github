@@ -100,6 +100,7 @@ func resourceGithubEnterpriseTeamMembersRead(ctx context.Context, d *schema.Reso
 
 		return diag.FromErr(err)
 	}
+	members = enterpriseTeamPreserveSetValueCase(d, "members", members)
 
 	fields := map[string]any{
 		"enterprise_slug": enterpriseSlug,
@@ -207,12 +208,43 @@ func enterpriseTeamSetValues(d *schema.ResourceData, key string) []string {
 	return slices.Compact(values)
 }
 
-// enterpriseTeamMissingFrom returns the values in want that do not appear in have.
+// enterpriseTeamPreserveSetValueCase keeps the spelling already recorded in state for values that
+// match an API response case-insensitively. This prevents refresh-only changes while retaining the
+// casing returned by GitHub for newly discovered values and imports.
+func enterpriseTeamPreserveSetValueCase(d *schema.ResourceData, key string, remote []string) []string {
+	set, ok := d.Get(key).(*schema.Set)
+	if !ok {
+		return remote
+	}
+
+	existing := make(map[string]string, set.Len())
+	for _, item := range set.List() {
+		if value, ok := item.(string); ok {
+			existing[strings.ToLower(value)] = value
+		}
+	}
+
+	values := make([]string, len(remote))
+	for i, value := range remote {
+		if prior, ok := existing[strings.ToLower(value)]; ok {
+			values[i] = prior
+		} else {
+			values[i] = value
+		}
+	}
+
+	return values
+}
+
+// enterpriseTeamMissingFrom returns the values in want that do not appear in have. GitHub logins
+// and slugs are case-insensitive.
 func enterpriseTeamMissingFrom(want, have []string) []string {
 	missing := make([]string, 0)
 
 	for _, value := range want {
-		if !slices.Contains(have, value) {
+		if !slices.ContainsFunc(have, func(candidate string) bool {
+			return strings.EqualFold(candidate, value)
+		}) {
 			missing = append(missing, value)
 		}
 	}

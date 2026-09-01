@@ -26,7 +26,7 @@ func findEnterpriseTeamByID(ctx context.Context, client *github.Client, maxPerPa
 	return nil, nil
 }
 
-// listEnterpriseTeamMembers returns the lowercased logins of every member of an enterprise team.
+// listEnterpriseTeamMembers returns the logins of every member of an enterprise team.
 func listEnterpriseTeamMembers(ctx context.Context, client *github.Client, maxPerPage int, enterpriseSlug, teamSlug string) ([]string, error) {
 	logins := make([]string, 0)
 
@@ -36,7 +36,7 @@ func listEnterpriseTeamMembers(ctx context.Context, client *github.Client, maxPe
 		}
 
 		if login := user.GetLogin(); login != "" {
-			logins = append(logins, strings.ToLower(login))
+			logins = append(logins, login)
 		}
 	}
 
