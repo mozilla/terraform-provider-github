@@ -15,3 +15,12 @@ resource "github_enterprise_organization_app_installation" "deploy" {
   repository_selection  = "selected"
   selected_repositories = ["terraform-modules", "deploy-tooling"]
 }
+
+# Install an app that does not request any repository permissions.
+resource "github_enterprise_organization_app_installation" "organization_runner" {
+  enterprise_slug = "my-enterprise"
+  organization    = "my-organization"
+  client_id       = "Iv23liCdEfGhIjKlMnOp"
+
+  repository_selection = "none"
+}
