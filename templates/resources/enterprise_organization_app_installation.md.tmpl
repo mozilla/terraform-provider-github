@@ -14,7 +14,7 @@ This resource is only available on GitHub Enterprise Cloud, and on GitHub Enterp
 
 ~> GitHub treats installing an app that is already installed as a success, and unsuspends it. Applying this resource against an organization where the app was installed by hand therefore adopts that installation silently, and a later `terraform destroy` uninstalls it. Import a pre-existing installation instead of adopting it.
 
--> `selected_repositories` must be non-empty when `repository_selection` is `selected`, and must be empty when it is `all`. The API accepts installing an app with no repository access at all, but never reports that state back, so it is not expressible here.
+-> `selected_repositories` must be non-empty when `repository_selection` is `selected`, and must be empty when it is `all` or `none`. Use `none` only when the app requests no repository permissions. GitHub reports these installations as `selected` with an empty repository list; the provider normalizes that response back to `none`.
 
 {{ if .HasExamples -}}
 ## Example Usage

@@ -14,14 +14,17 @@ import (
 	"github.com/hashicorp/terraform-plugin-sdk/v2/helper/validation"
 )
 
-// enterpriseAppInstallationRepositorySelections are the values GitHub accepts, and reports, for an
-// installation's repository_selection. The install endpoint also accepts "none", but no endpoint
-// ever reports it back, so it is not exposed here.
-var enterpriseAppInstallationRepositorySelections = []string{"all", "selected"}
+// enterpriseAppInstallationRepositorySelections are the values GitHub accepts when installing an
+// app on an enterprise-owned organization.
+var enterpriseAppInstallationRepositorySelections = []string{"all", "selected", "none"}
 
 // enterpriseAppInstallationRepositorySelectionSelected is the value that restricts an installation
 // to an explicit list of repositories.
 const enterpriseAppInstallationRepositorySelectionSelected = "selected"
+
+// enterpriseAppInstallationRepositorySelectionNone is used when an app requests no repository
+// permissions.
+const enterpriseAppInstallationRepositorySelectionNone = "none"
 
 // maxEnterpriseAppInstallationRepositoriesPerRequest is the number of repositories the enterprise
 // organization installation endpoints accept in a single request.
@@ -71,7 +74,7 @@ func resourceGithubEnterpriseOrganizationAppInstallation() *schema.Resource {
 				Required: true,
 				Description: "Which repositories the installation can access: `all` for every " +
 					"repository in the organization, or `selected` for the explicit list in " +
-					"`selected_repositories`.",
+					"`selected_repositories`, or `none` when the app requests no repository permissions.",
 				ValidateDiagFunc: validateValueFunc(enterpriseAppInstallationRepositorySelections),
 			},
 			"selected_repositories": {
@@ -234,11 +237,16 @@ func resourceGithubEnterpriseOrganizationAppInstallationRead(ctx context.Context
 		}
 	}
 
+	repositorySelection := normalizeEnterpriseAppInstallationRepositorySelection(
+		installation.GetRepositorySelection(),
+		len(selectedRepositories),
+	)
+
 	fields := map[string]any{
 		"enterprise_slug":       enterpriseSlug,
 		"organization":          organization,
 		"client_id":             clientID,
-		"repository_selection":  installation.GetRepositorySelection(),
+		"repository_selection":  repositorySelection,
 		"selected_repositories": selectedRepositories,
 		"installation_id":       installation.GetID(),
 		"app_slug":              installation.GetAppSlug(),
@@ -264,12 +272,31 @@ func resourceGithubEnterpriseOrganizationAppInstallationUpdate(ctx context.Conte
 
 	installationID, _ := d.Get("installation_id").(int)
 
-	// Switching between "all" and "selected" replaces the whole selection, so it also covers any
-	// change to selected_repositories made in the same apply.
+	// Changing repository_selection replaces the whole selection, so it also covers any change to
+	// selected_repositories made in the same apply.
 	if d.HasChange("repository_selection") {
 		selection, _ := d.Get("repository_selection").(string)
+		clientID, _ := d.Get("client_id").(string)
 
 		var remainder []string
+		if selection == enterpriseAppInstallationRepositorySelectionNone {
+			tflog.Debug(ctx, "Updating enterprise organization app installation with no repository permissions.", map[string]any{
+				"enterprise_slug":      enterpriseSlug,
+				"organization":         organization,
+				"installation_id":      installationID,
+				"repository_selection": selection,
+			})
+
+			req := github.InstallAppRequest{
+				ClientID:            clientID,
+				RepositorySelection: selection,
+			}
+			if _, _, err := client.Enterprise.InstallApp(ctx, enterpriseSlug, organization, req); err != nil {
+				return diag.FromErr(err)
+			}
+
+			return nil
+		}
 
 		req := github.UpdateAppInstallationRepositoriesRequest{
 			RepositorySelection: new(selection),
@@ -317,6 +344,17 @@ func resourceGithubEnterpriseOrganizationAppInstallationUpdate(ctx context.Conte
 	}
 
 	return nil
+}
+
+// normalizeEnterpriseAppInstallationRepositorySelection translates GitHub's representation of an
+// installation with no repository permissions. GitHub accepts "none" when installing the app, but
+// reads that state back as "selected" with an empty repository list.
+func normalizeEnterpriseAppInstallationRepositorySelection(selection string, selectedCount int) string {
+	if selection == enterpriseAppInstallationRepositorySelectionSelected && selectedCount == 0 {
+		return enterpriseAppInstallationRepositorySelectionNone
+	}
+
+	return selection
 }
 
 func resourceGithubEnterpriseOrganizationAppInstallationDelete(ctx context.Context, d *schema.ResourceData, m any) diag.Diagnostics {
