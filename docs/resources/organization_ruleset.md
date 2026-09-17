@@ -100,6 +100,47 @@ resource "github_organization_ruleset" "example_push" {
 }
 ```
 
+### Repository policy
+
+```terraform
+resource "github_organization_ruleset" "repository_policy" {
+  name        = "Protect production repositories"
+  target      = "repository"
+  enforcement = "active"
+
+  bypass_actors {
+    actor_type  = "OrganizationAdmin"
+    bypass_mode = "always"
+  }
+
+  conditions {
+    repository_name {
+      include = ["production-*"]
+      exclude = []
+    }
+  }
+
+  rules {
+    repository_delete   = true
+    repository_transfer = true
+
+    repository_name {
+      pattern = "^production-[a-z0-9-]+$"
+    }
+
+    repository_visibility {
+      public   = false
+      internal = false
+      private  = true
+    }
+  }
+}
+```
+
+Repository policies use `target = "repository"` and support only `repository_create`, `repository_delete`, `repository_transfer`, `repository_name`, and `repository_visibility` rules. The `creation` and `deletion` rules apply to refs, not repositories. Repository policies support `active` and `disabled` enforcement; `evaluate` and the `pull_request` bypass mode are not supported. Conditions select repositories by name, ID, or property and must not contain `ref_name`.
+
+See [GitHub's repository policy documentation](https://docs.github.com/en/enterprise-cloud@latest/organizations/managing-organization-settings/governing-how-people-use-repositories-in-your-organization).
+
 ## Argument Reference
 
 - `enforcement` - (Required) (String) Possible values for Enforcement are `disabled`, `active`, `evaluate`. Note: `evaluate` is currently only supported for owners of type `organization`.
@@ -108,15 +149,21 @@ resource "github_organization_ruleset" "example_push" {
 
 - `rules` - (Required) (Block List, Min: 1, Max: 1) Rules within the ruleset. (see [below for nested schema](#rules))
 
-- `target` - (Required) (String) Possible values are `branch`, `tag` and `push`.
+- `target` - (Required) (String) Possible values are `branch`, `tag`, `push`, and `repository`.
 
 - `bypass_actors` - (Optional) (Block List) The actors that can bypass the rules in this ruleset. (see [below for nested schema](#bypass_actors))
 
-- `conditions` - (Optional) (Block List, Max: 1) Parameters for an organization ruleset condition. For `branch` and `tag` targets, `ref_name` is required alongside one of `repository_name` or `repository_id`. For `push` targets, `ref_name` must NOT be set - only `repository_name` or `repository_id` should be used. (see [below for nested schema](#conditions))
+- `conditions` - (Optional) (Block List, Max: 1) Parameters for an organization ruleset condition. For `branch` and `tag` targets, `ref_name` is required alongside one of `repository_name`, `repository_id`, or `repository_property`. For `push` and `repository` targets, `ref_name` must not be set. (see [below for nested schema](#conditions))
 
 ### Rules
 
 The `rules` block supports the following:
+
+- `repository_create` - (Optional) (Boolean) Restrict repository creation to actors with bypass permission. Only valid for `repository` targets.
+- `repository_delete` - (Optional) (Boolean) Restrict repository deletion to actors with bypass permission. Only valid for `repository` targets.
+- `repository_transfer` - (Optional) (Boolean) Restrict transfers out of the organization to actors with bypass permission. Only valid for `repository` targets.
+- `repository_name` - (Optional) (Block List, Max: 1) Restrict repository names. Only valid for `repository` targets. (see [below for nested schema](#rulesrepository_name))
+- `repository_visibility` - (Optional) (Block List, Max: 1) Restrict repository creation and visibility changes. Only valid for `repository` targets. (see [below for nested schema](#rulesrepository_visibility))
 
 ~> **Note:** Rules are target-specific. `branch` and `tag` targets support rules like `creation`, `deletion`, `pull_request`, `required_status_checks`, etc. `push` targets only support `file_path_restriction`, `max_file_size`, `max_file_path_length`, and `file_extension_restriction`. Using the wrong rules for a target will result in a validation error.
 
@@ -280,6 +327,17 @@ The `rules` block supports the following:
 
 - `tool` - (Required) (String) The name of a code scanning tool.
 
+#### rules.repository_name
+
+- `pattern` - (Required) (String) The regular expression that repository names must match.
+- `negate` - (Optional) (Boolean) If true, repository names must not match the pattern. Defaults to `false`.
+
+#### rules.repository_visibility
+
+- `public` - (Required) (Boolean) Whether public visibility is allowed.
+- `internal` - (Required) (Boolean) Whether internal visibility is allowed.
+- `private` - (Required) (Boolean) Whether private visibility is allowed.
+
 #### rules.tag_name_pattern
 
 - `operator` - (Required) (String) The operator to use for matching. Can be one of: `starts_with`, `ends_with`, `contains`, `regex`.
@@ -323,7 +381,7 @@ The `rules` block supports the following:
 
 #### conditions
 
-- `ref_name` - (Optional) (Block List, Max: 1) Required for `branch` and `tag` targets. Must NOT be set for `push` targets. (see [below for nested schema](#conditionsref_name))
+- `ref_name` - (Optional) (Block List, Max: 1) Required for `branch` and `tag` targets. Must not be set for `push` or `repository` targets. (see [below for nested schema](#conditionsref_name))
 - `repository_id` (Optional) (List of Number) The repository IDs that the ruleset applies to. One of these IDs must match for the condition to pass.
 - `repository_name` (Optional) (Block List, Max: 1) Targets repositories that match the specified name patterns. (see [below for nested schema](#conditionsrepository_name))
 - `repository_property` (Optional) (Block List, Max: 1) Targets repositories by custom or system properties. (see [below for nested schema](#conditionsrepository_property))

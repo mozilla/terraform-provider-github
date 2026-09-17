@@ -390,6 +390,29 @@ func expandRules(input []any, org bool) *github.RepositoryRulesetRules {
 
 	rulesMap := input[0].(map[string]any)
 	rulesetRules := &github.RepositoryRulesetRules{}
+	if org {
+		if v, ok := rulesMap["repository_create"].(bool); ok && v {
+			rulesetRules.RepositoryCreate = &github.EmptyRuleParameters{}
+		}
+		if v, ok := rulesMap["repository_delete"].(bool); ok && v {
+			rulesetRules.RepositoryDelete = &github.EmptyRuleParameters{}
+		}
+		if v, ok := rulesMap["repository_transfer"].(bool); ok && v {
+			rulesetRules.RepositoryTransfer = &github.EmptyRuleParameters{}
+		}
+		if v, ok := rulesMap["repository_name"].([]any); ok && len(v) > 0 {
+			params := v[0].(map[string]any)
+			rulesetRules.RepositoryName = &github.SimplePatternRuleParameters{
+				Pattern: params["pattern"].(string), Negate: params["negate"].(bool),
+			}
+		}
+		if v, ok := rulesMap["repository_visibility"].([]any); ok && len(v) > 0 {
+			params := v[0].(map[string]any)
+			rulesetRules.RepositoryVisibility = &github.RepositoryVisibilityRuleParameters{
+				Internal: params["internal"].(bool), Private: params["private"].(bool), Public: params["public"].(bool),
+			}
+		}
+	}
 
 	// Simple rules without parameters
 	if v, ok := rulesMap["creation"].(bool); ok && v {
@@ -664,6 +687,23 @@ func flattenRules(ctx context.Context, rules *github.RepositoryRulesetRules, org
 	}
 
 	rulesMap := make(map[string]any)
+	if org {
+		rulesMap["repository_create"] = rules.RepositoryCreate != nil
+		rulesMap["repository_delete"] = rules.RepositoryDelete != nil
+		rulesMap["repository_transfer"] = rules.RepositoryTransfer != nil
+		rulesMap["repository_name"] = []any{}
+		if rules.RepositoryName != nil {
+			rulesMap["repository_name"] = []any{map[string]any{
+				"pattern": rules.RepositoryName.Pattern, "negate": rules.RepositoryName.Negate,
+			}}
+		}
+		rulesMap["repository_visibility"] = []any{}
+		if rules.RepositoryVisibility != nil {
+			rulesMap["repository_visibility"] = []any{map[string]any{
+				"internal": rules.RepositoryVisibility.Internal, "private": rules.RepositoryVisibility.Private, "public": rules.RepositoryVisibility.Public,
+			}}
+		}
+	}
 
 	// Simple boolean rules - explicitly set all to false first, then override with true if present
 	rulesMap["creation"] = rules.Creation != nil

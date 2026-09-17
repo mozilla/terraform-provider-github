@@ -13,6 +13,14 @@ import (
 
 var operatorValidation = validation.ToDiagFunc(validation.StringInSlice([]string{"starts_with", "ends_with", "contains", "regex"}, false))
 
+var repositoryOnlyRules = []github.RepositoryRuleType{
+	github.RulesetRuleTypeRepositoryCreate,
+	github.RulesetRuleTypeRepositoryDelete,
+	github.RulesetRuleTypeRepositoryName,
+	github.RulesetRuleTypeRepositoryTransfer,
+	github.RulesetRuleTypeRepositoryVisibility,
+}
+
 // branchTagOnlyRules contains rules that are only valid for branch and tag targets.
 //
 // These rules apply to ref-based operations (branches and tags) and are not supported
@@ -71,6 +79,8 @@ func validateRulesForTarget(ctx context.Context, d *schema.ResourceDiff) error {
 	tflog.Debug(ctx, "Validating rules for target", map[string]any{"target": target})
 
 	switch target {
+	case github.RulesetTargetRepository:
+		return validateRules(ctx, d, repositoryOnlyRules)
 	case github.RulesetTargetPush:
 		return validateRulesForPushTarget(ctx, d)
 	case github.RulesetTargetBranch, github.RulesetTargetTag:
@@ -146,6 +156,10 @@ func validateRulesetConditions(ctx context.Context, d *schema.ResourceDiff, isOr
 		return validateConditionsFieldForBranchAndTagTargets(ctx, target, conditions, isOrg)
 	case github.RulesetTargetPush:
 		return validateConditionsFieldForPushTarget(ctx, conditions)
+	case github.RulesetTargetRepository:
+		if conditions["ref_name"] != nil && len(conditions["ref_name"].([]any)) > 0 {
+			return fmt.Errorf("ref_name must not be set for repository target")
+		}
 	}
 	return nil
 }

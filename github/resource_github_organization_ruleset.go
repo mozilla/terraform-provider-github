@@ -16,7 +16,7 @@ import (
 	"github.com/hashicorp/terraform-plugin-sdk/v2/helper/validation"
 )
 
-var supportedOrgRulesetTargetTypes = []string{string(github.RulesetTargetBranch), string(github.RulesetTargetTag), string(github.RulesetTargetPush)}
+var supportedOrgRulesetTargetTypes = []string{string(github.RulesetTargetBranch), string(github.RulesetTargetTag), string(github.RulesetTargetPush), string(github.RulesetTargetRepository)}
 
 func resourceGithubOrganizationRuleset() *schema.Resource {
 	return &schema.Resource{
@@ -40,9 +40,8 @@ func resourceGithubOrganizationRuleset() *schema.Resource {
 				Description:      "The name of the ruleset.",
 			},
 			"target": {
-				Type:     schema.TypeString,
-				Required: true,
-				// The API accepts an `repository` target, but we don't support it yet.
+				Type:             schema.TypeString,
+				Required:         true,
 				ValidateDiagFunc: validation.ToDiagFunc(validation.StringInSlice(supportedOrgRulesetTargetTypes, false)),
 				Description:      "The target of the ruleset. Possible values are " + strings.Join(supportedOrgRulesetTargetTypes[:len(supportedOrgRulesetTargetTypes)-1], ", ") + " and " + supportedOrgRulesetTargetTypes[len(supportedOrgRulesetTargetTypes)-1] + ".",
 			},
@@ -50,7 +49,7 @@ func resourceGithubOrganizationRuleset() *schema.Resource {
 				Type:             schema.TypeString,
 				Required:         true,
 				ValidateDiagFunc: validation.ToDiagFunc(validation.StringInSlice([]string{"disabled", "active", "evaluate"}, false)),
-				Description:      "The enforcement level of the ruleset. `evaluate` allows admins to test rules before enforcing them. Possible values are `disabled`, `active`, and `evaluate`. Note: `evaluate` is only available for Enterprise plans.",
+				Description:      "The enforcement level of the ruleset. `evaluate` allows admins to test rules before enforcing them. Possible values are `disabled`, `active`, and `evaluate`. Note: `evaluate` is only available for Enterprise plans and is not supported for the `repository` target.",
 			},
 			"bypass_actors": {
 				Type:             schema.TypeList, // TODO: These are returned from GH API sorted by actor_id, we might want to investigate if we want to include sorting
@@ -75,7 +74,7 @@ func resourceGithubOrganizationRuleset() *schema.Resource {
 							Type:             schema.TypeString,
 							Required:         true,
 							ValidateDiagFunc: validation.ToDiagFunc(validation.StringInSlice([]string{"always", "pull_request", "exempt"}, false)),
-							Description:      "When the specified actor can bypass the ruleset. pull_request means that an actor can only bypass rules on pull requests. Can be one of: `always`, `pull_request`, `exempt`.",
+							Description:      "When the specified actor can bypass the ruleset. pull_request means that an actor can only bypass rules on pull requests and is not supported for the `repository` target. Can be one of: `always`, `pull_request`, `exempt`.",
 						},
 					},
 				},
@@ -94,14 +93,14 @@ func resourceGithubOrganizationRuleset() *schema.Resource {
 				Type:        schema.TypeList,
 				Optional:    true,
 				MaxItems:    1,
-				Description: "Parameters for an organization ruleset condition.The branch and tag rulesets conditions object should contain both repository_name and ref_name properties, or both repository_id and ref_name properties, or both repository_property and ref_name properties. The push rulesets conditions object does not require the ref_name property.",
+				Description: "Parameters for an organization ruleset condition. Branch and tag targets require ref_name alongside one of repository_name, repository_id, or repository_property. Push and repository targets must not contain ref_name.",
 				Elem: &schema.Resource{
 					Schema: map[string]*schema.Schema{
 						"ref_name": {
 							Type:        schema.TypeList,
 							Optional:    true,
 							MaxItems:    1,
-							Description: "Targets refs that match the specified patterns. Required for `branch` and `tag` targets.",
+							Description: "Targets refs that match the specified patterns. Required for `branch` and `tag` targets. Must not be set for `push` or `repository` targets.",
 							Elem: &schema.Resource{
 								Schema: map[string]*schema.Schema{
 									"include": {
@@ -249,6 +248,67 @@ func resourceGithubOrganizationRuleset() *schema.Resource {
 				Description: "Rules within the ruleset.",
 				Elem: &schema.Resource{
 					Schema: map[string]*schema.Schema{
+						"repository_create": {
+							Type:        schema.TypeBool,
+							Optional:    true,
+							Description: "Only allow actors with bypass permission to create repositories. Only valid for the `repository` target.",
+						},
+						"repository_delete": {
+							Type:        schema.TypeBool,
+							Optional:    true,
+							Description: "Only allow actors with bypass permission to delete repositories. Only valid for the `repository` target.",
+						},
+						"repository_transfer": {
+							Type:        schema.TypeBool,
+							Optional:    true,
+							Description: "Only allow actors with bypass permission to transfer repositories out of the organization. Only valid for the `repository` target.",
+						},
+						"repository_name": {
+							Type:        schema.TypeList,
+							Optional:    true,
+							MaxItems:    1,
+							Description: "Restrict repository names using a regular expression. Only valid for the `repository` target.",
+							Elem: &schema.Resource{
+								Schema: map[string]*schema.Schema{
+									"pattern": {
+										Type:        schema.TypeString,
+										Required:    true,
+										Description: "The regular expression that repository names must match.",
+									},
+									"negate": {
+										Type:        schema.TypeBool,
+										Optional:    true,
+										Default:     false,
+										Description: "If true, repository names must not match the pattern.",
+									},
+								},
+							},
+						},
+						"repository_visibility": {
+							Type:        schema.TypeList,
+							Optional:    true,
+							MaxItems:    1,
+							Description: "Restrict repository creation and visibility changes to the selected visibilities. Only valid for the `repository` target.",
+							Elem: &schema.Resource{
+								Schema: map[string]*schema.Schema{
+									"public": {
+										Type:        schema.TypeBool,
+										Required:    true,
+										Description: "Whether public visibility is allowed.",
+									},
+									"internal": {
+										Type:        schema.TypeBool,
+										Required:    true,
+										Description: "Whether internal visibility is allowed.",
+									},
+									"private": {
+										Type:        schema.TypeBool,
+										Required:    true,
+										Description: "Whether private visibility is allowed.",
+									},
+								},
+							},
+						},
 						"creation": {
 							Type:        schema.TypeBool,
 							Optional:    true,
@@ -1029,6 +1089,18 @@ func resourceGithubOrganizationRulesetImport(ctx context.Context, d *schema.Reso
 }
 
 func resourceGithubOrganizationRulesetDiff(ctx context.Context, d *schema.ResourceDiff, m any) error {
+	if d.Get("target").(string) == string(github.RulesetTargetRepository) {
+		if d.Get("enforcement").(string) == "evaluate" {
+			return fmt.Errorf("enforcement evaluate is not valid for repository target; use active or disabled")
+		}
+		for i, raw := range d.Get("bypass_actors").([]any) {
+			actor := raw.(map[string]any)
+			if actor["bypass_mode"] == "pull_request" {
+				return fmt.Errorf("bypass_actors.%d.bypass_mode pull_request is not valid for repository target", i)
+			}
+		}
+	}
+
 	if err := validateRulesetConditions(ctx, d, true); err != nil {
 		return err
 	}
