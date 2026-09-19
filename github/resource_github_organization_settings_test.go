@@ -4,8 +4,79 @@ import (
 	"fmt"
 	"testing"
 
+	"github.com/hashicorp/terraform-plugin-sdk/v2/helper/schema"
 	"github.com/hashicorp/terraform-plugin-testing/helper/resource"
 )
+
+func TestBuildOrganizationSettingsIncludesNewOrganizationSettings(t *testing.T) {
+	t.Parallel()
+
+	d := schema.TestResourceDataRaw(t, resourceGithubOrganizationSettings().Schema, map[string]any{
+		"billing_email": "test@example.com",
+		"secret_scanning_push_protection_custom_link_enabled": true,
+		"secret_scanning_push_protection_custom_link":         "https://example.com/secret-scanning-help",
+		"deploy_keys_enabled_for_repositories":                true,
+		"secret_scanning_validity_checks_enabled":             true,
+		"members_can_delete_repositories":                     true,
+		"members_can_change_repo_visibility":                  true,
+		"members_can_invite_outside_collaborators":            true,
+		"members_can_delete_issues":                           true,
+		"display_commenter_full_name_setting_enabled":         true,
+		"readers_can_create_discussions":                      true,
+		"members_can_create_teams":                            true,
+		"members_can_view_dependency_insights":                true,
+		"default_repository_branch":                           "main",
+	})
+
+	settings := buildOrganizationSettings(d, false)
+	if settings.SecretScanningPushProtectionCustomLinkEnabled == nil || !settings.GetSecretScanningPushProtectionCustomLinkEnabled() {
+		t.Fatal("expected secret scanning push protection custom link to be enabled")
+	}
+	if got := settings.GetSecretScanningPushProtectionCustomLink(); got != "https://example.com/secret-scanning-help" {
+		t.Fatalf("unexpected secret scanning push protection custom link: %q", got)
+	}
+	if settings.DeployKeysEnabledForRepositories == nil || !settings.GetDeployKeysEnabledForRepositories() {
+		t.Fatal("expected deploy keys to be enabled for repositories")
+	}
+	if settings.SecretScanningValidityChecksEnabled == nil || !settings.GetSecretScanningValidityChecksEnabled() {
+		t.Fatal("expected secret scanning validity checks to be enabled")
+	}
+	boolSettings := map[string]*bool{
+		"members_can_delete_repositories":             settings.MembersCanDeleteRepositories,
+		"members_can_change_repo_visibility":          settings.MembersCanChangeRepoVisibility,
+		"members_can_invite_outside_collaborators":    settings.MembersCanInviteOutsideCollaborators,
+		"members_can_delete_issues":                   settings.MembersCanDeleteIssues,
+		"display_commenter_full_name_setting_enabled": settings.DisplayCommenterFullNameSettingEnabled,
+		"readers_can_create_discussions":              settings.ReadersCanCreateDiscussions,
+		"members_can_create_teams":                    settings.MembersCanCreateTeams,
+		"members_can_view_dependency_insights":        settings.MembersCanViewDependencyInsights,
+	}
+	for name, value := range boolSettings {
+		if value == nil || !*value {
+			t.Errorf("expected %s to be included and enabled", name)
+		}
+	}
+	if got := settings.GetDefaultRepositoryBranch(); got != "main" {
+		t.Fatalf("unexpected default repository branch: %q", got)
+	}
+}
+
+func TestBuildOrganizationSettingsIncludesExplicitFalseOptionalSetting(t *testing.T) {
+	t.Parallel()
+
+	d := schema.TestResourceDataRaw(t, resourceGithubOrganizationSettings().Schema, map[string]any{
+		"billing_email":                      "test@example.com",
+		"members_can_change_repo_visibility": false,
+	})
+
+	settings := buildOrganizationSettings(d, false)
+	if settings.MembersCanChangeRepoVisibility == nil || *settings.MembersCanChangeRepoVisibility {
+		t.Fatal("expected explicitly disabled repository visibility changes to be included")
+	}
+	if settings.MembersCanDeleteRepositories != nil {
+		t.Fatal("expected omitted repository deletion setting not to be included")
+	}
+}
 
 func TestAccGithubOrganizationSettings(t *testing.T) {
 	// IMPORTANT: Do not run these tests in parallel as they modify the organization state.
@@ -41,6 +112,9 @@ func TestAccGithubOrganizationSettings(t *testing.T) {
 			dependency_graph_enabled_for_new_repositories = false
 			secret_scanning_enabled_for_new_repositories = false
 			secret_scanning_push_protection_enabled_for_new_repositories = false
+			secret_scanning_push_protection_custom_link_enabled = true
+			secret_scanning_push_protection_custom_link = "https://example.com/secret-scanning-help"
+			deploy_keys_enabled_for_repositories = true
 		  }`
 
 		check := resource.ComposeTestCheckFunc(
@@ -48,6 +122,9 @@ func TestAccGithubOrganizationSettings(t *testing.T) {
 				"github_organization_settings.test",
 				"billing_email", "test@example.com",
 			),
+			resource.TestCheckResourceAttr("github_organization_settings.test", "secret_scanning_push_protection_custom_link_enabled", "true"),
+			resource.TestCheckResourceAttr("github_organization_settings.test", "secret_scanning_push_protection_custom_link", "https://example.com/secret-scanning-help"),
+			resource.TestCheckResourceAttr("github_organization_settings.test", "deploy_keys_enabled_for_repositories", "true"),
 		)
 
 		resource.Test(t, resource.TestCase{

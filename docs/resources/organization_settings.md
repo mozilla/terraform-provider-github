@@ -31,6 +31,15 @@ resource "github_organization_settings" "test" {
   members_can_create_public_pages                              = true
   members_can_create_private_pages                             = true
   members_can_fork_private_repositories                        = true
+  members_can_delete_repositories                              = true
+  members_can_change_repo_visibility                           = true
+  members_can_invite_outside_collaborators                     = true
+  members_can_delete_issues                                    = true
+  display_commenter_full_name_setting_enabled                  = true
+  readers_can_create_discussions                               = true
+  members_can_create_teams                                     = true
+  members_can_view_dependency_insights                         = true
+  default_repository_branch                                    = "main"
   web_commit_signoff_required                                  = true
   advanced_security_enabled_for_new_repositories               = false
   dependabot_alerts_enabled_for_new_repositories               = false
@@ -38,6 +47,10 @@ resource "github_organization_settings" "test" {
   dependency_graph_enabled_for_new_repositories                = false
   secret_scanning_enabled_for_new_repositories                 = false
   secret_scanning_push_protection_enabled_for_new_repositories = false
+  secret_scanning_validity_checks_enabled                      = false
+  secret_scanning_push_protection_custom_link_enabled          = true
+  secret_scanning_push_protection_custom_link                  = "https://example.com/secret-scanning-help"
+  deploy_keys_enabled_for_repositories                         = false
 }
 ```
 
@@ -64,6 +77,15 @@ The following arguments are supported:
 - `members_can_create_public_pages` - (Optional) Whether or not organization members can create new public pages. Defaults to `true`.
 - `members_can_create_private_pages` - (Optional) Whether or not organization members can create new private pages. Defaults to `true`.
 - `members_can_fork_private_repositories` - (Optional) Whether or not organization members can fork private repositories. Defaults to `false`.
+- `members_can_delete_repositories` - (Optional) Whether or not members with admin permissions can delete repositories.
+- `members_can_change_repo_visibility` - (Optional) Whether or not members with admin permissions can change repository visibility.
+- `members_can_invite_outside_collaborators` - (Optional) Whether or not members with admin permissions can invite outside collaborators.
+- `members_can_delete_issues` - (Optional) Whether or not members with admin permissions can delete issues.
+- `display_commenter_full_name_setting_enabled` - (Optional) Whether or not members can see commenters' full names in private repositories.
+- `readers_can_create_discussions` - (Optional) Whether or not users with read access can create and comment on discussions.
+- `members_can_create_teams` - (Optional) Whether or not organization members can create teams.
+- `members_can_view_dependency_insights` - (Optional) Whether or not organization members can view dependency insights.
+- `default_repository_branch` - (Optional) The default branch name for new repositories in the organization.
 - `web_commit_signoff_required` - (Optional) Whether or not commit signatures are required for commits to the organization. Defaults to `false`.
 - `advanced_security_enabled_for_new_repositories` - (Optional) Whether or not advanced security is enabled for new repositories. Defaults to `false`.
 - `dependabot_alerts_enabled_for_new_repositories` - (Optional) Whether or not dependabot alerts are enabled for new repositories. Defaults to `false`.
@@ -71,6 +93,10 @@ The following arguments are supported:
 - `dependency_graph_enabled_for_new_repositories` - (Optional) Whether or not dependency graph is enabled for new repositories. Defaults to `false`.
 - `secret_scanning_enabled_for_new_repositories` - (Optional) Whether or not secret scanning is enabled for new repositories. Defaults to `false`.
 - `secret_scanning_push_protection_enabled_for_new_repositories` - (Optional) Whether or not secret scanning push protection is enabled for new repositories. Defaults to `false`.
+- `secret_scanning_validity_checks_enabled` - (Optional) Whether or not secret scanning automatic validity checks are enabled for the organization. Defaults to `false`.
+- `secret_scanning_push_protection_custom_link_enabled` - (Optional) Whether or not a custom link is shown to contributors who are blocked from pushing a secret by push protection. Defaults to `false`.
+- `secret_scanning_push_protection_custom_link` - (Optional) The URL displayed to contributors who are blocked from pushing a secret by push protection.
+- `deploy_keys_enabled_for_repositories` - (Optional) Whether or not deploy keys may be added and used for repositories in the organization. Defaults to `false`.
 
 ## Attributes Reference
 

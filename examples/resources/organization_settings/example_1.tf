@@ -18,6 +18,15 @@ resource "github_organization_settings" "test" {
   members_can_create_public_pages                              = true
   members_can_create_private_pages                             = true
   members_can_fork_private_repositories                        = true
+  members_can_delete_repositories                              = true
+  members_can_change_repo_visibility                           = true
+  members_can_invite_outside_collaborators                     = true
+  members_can_delete_issues                                    = true
+  display_commenter_full_name_setting_enabled                  = true
+  readers_can_create_discussions                               = true
+  members_can_create_teams                                     = true
+  members_can_view_dependency_insights                         = true
+  default_repository_branch                                    = "main"
   web_commit_signoff_required                                  = true
   advanced_security_enabled_for_new_repositories               = false
   dependabot_alerts_enabled_for_new_repositories               = false
@@ -25,4 +34,8 @@ resource "github_organization_settings" "test" {
   dependency_graph_enabled_for_new_repositories                = false
   secret_scanning_enabled_for_new_repositories                 = false
   secret_scanning_push_protection_enabled_for_new_repositories = false
+  secret_scanning_validity_checks_enabled                      = false
+  secret_scanning_push_protection_custom_link_enabled          = true
+  secret_scanning_push_protection_custom_link                  = "https://example.com/secret-scanning-help"
+  deploy_keys_enabled_for_repositories                         = false
 }

@@ -174,6 +174,7 @@ func TestRoundTripMaxFilePathLength(t *testing.T) {
 
 	if expandedRules == nil {
 		t.Fatal("Expected expandedRules to not be nil")
+		return
 	}
 
 	// Flatten back to terraform format
@@ -459,10 +460,12 @@ func TestCopilotCodeReviewRoundTrip(t *testing.T) {
 
 	if expandedRules == nil {
 		t.Fatal("Expected expandedRules to not be nil")
+		return
 	}
 
 	if expandedRules.CopilotCodeReview == nil {
 		t.Fatal("Expected CopilotCodeReview rule to be set")
+		return
 	}
 
 	if expandedRules.CopilotCodeReview.ReviewOnPush != true {
@@ -873,6 +876,7 @@ func TestExpandRepositoryPropertyConditions_SingleInclude(t *testing.T) {
 
 	if result == nil {
 		t.Fatal("Expected result to not be nil")
+		return
 	}
 
 	if len(result.Include) != 1 {
@@ -921,6 +925,7 @@ func TestExpandRepositoryPropertyConditions_IncludeAndExclude(t *testing.T) {
 
 	if result == nil {
 		t.Fatal("Expected result to not be nil")
+		return
 	}
 
 	if len(result.Include) != 1 {
@@ -968,6 +973,7 @@ func TestExpandRepositoryPropertyConditions_MultipleValues(t *testing.T) {
 
 	if result == nil {
 		t.Fatal("Expected result to not be nil")
+		return
 	}
 
 	if len(result.Include) != 1 {
@@ -1012,6 +1018,7 @@ func TestExpandRepositoryPropertyConditions_MultipleProperties(t *testing.T) {
 
 	if result == nil {
 		t.Fatal("Expected result to not be nil")
+		return
 	}
 
 	if len(result.Include) != 2 {
@@ -1061,6 +1068,7 @@ func TestExpandRepositoryPropertyConditions_NilElements(t *testing.T) {
 
 	if result == nil {
 		t.Fatal("Expected result to not be nil")
+		return
 	}
 
 	// Nil element should be skipped, so we should have 2 properties
@@ -1096,6 +1104,7 @@ func TestExpandRepositoryPropertyConditions_NilPropertyValues(t *testing.T) {
 
 	if result == nil {
 		t.Fatal("Expected result to not be nil")
+		return
 	}
 
 	if len(result.Include) != 1 {

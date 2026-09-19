@@ -115,6 +115,51 @@ func dataSourceGithubOrganization() *schema.Resource {
 				Type:     schema.TypeBool,
 				Computed: true,
 			},
+			"members_can_delete_repositories": {
+				Type:        schema.TypeBool,
+				Computed:    true,
+				Description: "Whether members with admin permissions can delete repositories.",
+			},
+			"members_can_change_repo_visibility": {
+				Type:        schema.TypeBool,
+				Computed:    true,
+				Description: "Whether members with admin permissions can change repository visibility.",
+			},
+			"members_can_invite_outside_collaborators": {
+				Type:        schema.TypeBool,
+				Computed:    true,
+				Description: "Whether members with admin permissions can invite outside collaborators.",
+			},
+			"members_can_delete_issues": {
+				Type:        schema.TypeBool,
+				Computed:    true,
+				Description: "Whether members with admin permissions can delete issues.",
+			},
+			"display_commenter_full_name_setting_enabled": {
+				Type:        schema.TypeBool,
+				Computed:    true,
+				Description: "Whether members can see commenters' full names in private repositories.",
+			},
+			"readers_can_create_discussions": {
+				Type:        schema.TypeBool,
+				Computed:    true,
+				Description: "Whether users with read access can create and comment on discussions.",
+			},
+			"members_can_create_teams": {
+				Type:        schema.TypeBool,
+				Computed:    true,
+				Description: "Whether organization members can create teams.",
+			},
+			"members_can_view_dependency_insights": {
+				Type:        schema.TypeBool,
+				Computed:    true,
+				Description: "Whether organization members can view dependency insights.",
+			},
+			"default_repository_branch": {
+				Type:        schema.TypeString,
+				Computed:    true,
+				Description: "The default branch name for new repositories in the organization.",
+			},
 			"web_commit_signoff_required": {
 				Type:     schema.TypeBool,
 				Computed: true,
@@ -140,8 +185,29 @@ func dataSourceGithubOrganization() *schema.Resource {
 				Computed: true,
 			},
 			"secret_scanning_push_protection_enabled_for_new_repositories": {
-				Type:     schema.TypeBool,
-				Computed: true,
+				Type:        schema.TypeBool,
+				Computed:    true,
+				Description: "Whether secret scanning push protection is automatically enabled for new repositories.",
+			},
+			"secret_scanning_validity_checks_enabled": {
+				Type:        schema.TypeBool,
+				Computed:    true,
+				Description: "Whether secret scanning automatic validity checks are enabled for the organization.",
+			},
+			"secret_scanning_push_protection_custom_link_enabled": {
+				Type:        schema.TypeBool,
+				Computed:    true,
+				Description: "Whether a custom link is shown to contributors who are blocked from pushing a secret by push protection.",
+			},
+			"secret_scanning_push_protection_custom_link": {
+				Type:        schema.TypeString,
+				Computed:    true,
+				Description: "The URL displayed to contributors who are blocked from pushing a secret by push protection.",
+			},
+			"deploy_keys_enabled_for_repositories": {
+				Type:        schema.TypeBool,
+				Computed:    true,
+				Description: "Whether deploy keys may be added and used for repositories in the organization.",
 			},
 			"summary_only": {
 				Type:     schema.TypeBool,
@@ -259,6 +325,15 @@ func dataSourceGithubOrganizationRead(ctx context.Context, d *schema.ResourceDat
 		_ = d.Set("members_can_create_private_repositories", organization.GetMembersCanCreatePrivateRepos())
 		_ = d.Set("members_can_create_internal_repositories", organization.GetMembersCanCreateInternalRepos())
 		_ = d.Set("members_can_fork_private_repositories", organization.GetMembersCanForkPrivateRepos())
+		_ = d.Set("members_can_delete_repositories", organization.GetMembersCanDeleteRepositories())
+		_ = d.Set("members_can_change_repo_visibility", organization.GetMembersCanChangeRepoVisibility())
+		_ = d.Set("members_can_invite_outside_collaborators", organization.GetMembersCanInviteOutsideCollaborators())
+		_ = d.Set("members_can_delete_issues", organization.GetMembersCanDeleteIssues())
+		_ = d.Set("display_commenter_full_name_setting_enabled", organization.GetDisplayCommenterFullNameSettingEnabled())
+		_ = d.Set("readers_can_create_discussions", organization.GetReadersCanCreateDiscussions())
+		_ = d.Set("members_can_create_teams", organization.GetMembersCanCreateTeams())
+		_ = d.Set("members_can_view_dependency_insights", organization.GetMembersCanViewDependencyInsights())
+		_ = d.Set("default_repository_branch", organization.GetDefaultRepositoryBranch())
 		_ = d.Set("web_commit_signoff_required", organization.GetWebCommitSignoffRequired())
 		_ = d.Set("members_can_create_pages", organization.GetMembersCanCreatePages())
 		_ = d.Set("members_can_create_public_pages", organization.GetMembersCanCreatePublicPages())
@@ -269,6 +344,10 @@ func dataSourceGithubOrganizationRead(ctx context.Context, d *schema.ResourceDat
 		_ = d.Set("dependency_graph_enabled_for_new_repositories", organization.GetDependencyGraphEnabledForNewRepos())
 		_ = d.Set("secret_scanning_enabled_for_new_repositories", organization.GetSecretScanningEnabledForNewRepos())
 		_ = d.Set("secret_scanning_push_protection_enabled_for_new_repositories", organization.GetSecretScanningPushProtectionEnabledForNewRepos())
+		_ = d.Set("secret_scanning_validity_checks_enabled", organization.GetSecretScanningValidityChecksEnabled())
+		_ = d.Set("secret_scanning_push_protection_custom_link_enabled", organization.GetSecretScanningPushProtectionCustomLinkEnabled())
+		_ = d.Set("secret_scanning_push_protection_custom_link", organization.GetSecretScanningPushProtectionCustomLink())
+		_ = d.Set("deploy_keys_enabled_for_repositories", organization.GetDeployKeysEnabledForRepositories())
 	}
 
 	d.SetId(strconv.FormatInt(organization.GetID(), 10))

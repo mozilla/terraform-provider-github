@@ -45,6 +45,15 @@ Use this data source to retrieve basic information about a GitHub Organization.
 - `members_can_create_public_pages` - Whether organization members can create public pages sites.
 - `members_can_create_private_pages` - Whether organization members can create private pages sites.
 - `members_can_fork_private_repositories` - Whether organization members can create private repository forks.
+- `members_can_delete_repositories` - Whether members with admin permissions can delete repositories.
+- `members_can_change_repo_visibility` - Whether members with admin permissions can change repository visibility.
+- `members_can_invite_outside_collaborators` - Whether members with admin permissions can invite outside collaborators.
+- `members_can_delete_issues` - Whether members with admin permissions can delete issues.
+- `display_commenter_full_name_setting_enabled` - Whether members can see commenters' full names in private repositories.
+- `readers_can_create_discussions` - Whether users with read access can create and comment on discussions.
+- `members_can_create_teams` - Whether organization members can create teams.
+- `members_can_view_dependency_insights` - Whether organization members can view dependency insights.
+- `default_repository_branch` - The default branch name for new repositories in the organization.
 - `web_commit_signoff_required` - Whether organization members must sign all commits.
 - `advanced_security_enabled_for_new_repositories` - Whether advanced security is enabled for new repositories.
 - `dependabot_alerts_enabled_for_new_repositories` - Whether Dependabot alerts is automatically enabled for new repositories.
@@ -52,3 +61,7 @@ Use this data source to retrieve basic information about a GitHub Organization.
 - `dependency_graph_enabled_for_new_repositories` - Whether dependency graph is automatically enabled for new repositories.
 - `secret_scanning_enabled_for_new_repositories` - Whether secret scanning is automatically enabled for new repositories.
 - `secret_scanning_push_protection_enabled_for_new_repositories` - Whether secret scanning push protection is automatically enabled for new repositories.
+- `secret_scanning_validity_checks_enabled` - Whether secret scanning automatic validity checks are enabled for the organization.
+- `secret_scanning_push_protection_custom_link_enabled` - Whether a custom link is shown to contributors who are blocked from pushing a secret by push protection.
+- `secret_scanning_push_protection_custom_link` - The URL displayed to contributors who are blocked from pushing a secret by push protection.
+- `deploy_keys_enabled_for_repositories` - Whether deploy keys may be added and used for repositories in the organization.

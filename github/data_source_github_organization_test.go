@@ -35,6 +35,15 @@ func TestAccGithubOrganizationDataSource(t *testing.T) {
 			resource.TestCheckResourceAttrSet("data.github_organization.test", "members_can_create_private_repositories"),
 			resource.TestCheckResourceAttrSet("data.github_organization.test", "members_can_create_internal_repositories"),
 			resource.TestCheckResourceAttrSet("data.github_organization.test", "members_can_fork_private_repositories"),
+			resource.TestCheckResourceAttrSet("data.github_organization.test", "members_can_delete_repositories"),
+			resource.TestCheckResourceAttrSet("data.github_organization.test", "members_can_change_repo_visibility"),
+			resource.TestCheckResourceAttrSet("data.github_organization.test", "members_can_invite_outside_collaborators"),
+			resource.TestCheckResourceAttrSet("data.github_organization.test", "members_can_delete_issues"),
+			resource.TestCheckResourceAttrSet("data.github_organization.test", "display_commenter_full_name_setting_enabled"),
+			resource.TestCheckResourceAttrSet("data.github_organization.test", "readers_can_create_discussions"),
+			resource.TestCheckResourceAttrSet("data.github_organization.test", "members_can_create_teams"),
+			resource.TestCheckResourceAttrSet("data.github_organization.test", "members_can_view_dependency_insights"),
+			resource.TestCheckResourceAttrSet("data.github_organization.test", "default_repository_branch"),
 			resource.TestCheckResourceAttrSet("data.github_organization.test", "web_commit_signoff_required"),
 			resource.TestCheckResourceAttrSet("data.github_organization.test", "members_can_create_pages"),
 			resource.TestCheckResourceAttrSet("data.github_organization.test", "members_can_create_public_pages"),
@@ -45,6 +54,9 @@ func TestAccGithubOrganizationDataSource(t *testing.T) {
 			resource.TestCheckResourceAttrSet("data.github_organization.test", "dependency_graph_enabled_for_new_repositories"),
 			resource.TestCheckResourceAttrSet("data.github_organization.test", "secret_scanning_enabled_for_new_repositories"),
 			resource.TestCheckResourceAttrSet("data.github_organization.test", "secret_scanning_push_protection_enabled_for_new_repositories"),
+			resource.TestCheckResourceAttrSet("data.github_organization.test", "secret_scanning_validity_checks_enabled"),
+			resource.TestCheckResourceAttrSet("data.github_organization.test", "secret_scanning_push_protection_custom_link_enabled"),
+			resource.TestCheckResourceAttrSet("data.github_organization.test", "deploy_keys_enabled_for_repositories"),
 		)
 
 		resource.Test(t, resource.TestCase{
@@ -137,6 +149,15 @@ func TestAccGithubOrganizationDataSource(t *testing.T) {
 			resource.TestCheckNoResourceAttr("data.github_organization.test", "members_can_create_private_repositories"),
 			resource.TestCheckNoResourceAttr("data.github_organization.test", "members_can_create_internal_repositories"),
 			resource.TestCheckNoResourceAttr("data.github_organization.test", "members_can_fork_private_repositories"),
+			resource.TestCheckNoResourceAttr("data.github_organization.test", "members_can_delete_repositories"),
+			resource.TestCheckNoResourceAttr("data.github_organization.test", "members_can_change_repo_visibility"),
+			resource.TestCheckNoResourceAttr("data.github_organization.test", "members_can_invite_outside_collaborators"),
+			resource.TestCheckNoResourceAttr("data.github_organization.test", "members_can_delete_issues"),
+			resource.TestCheckNoResourceAttr("data.github_organization.test", "display_commenter_full_name_setting_enabled"),
+			resource.TestCheckNoResourceAttr("data.github_organization.test", "readers_can_create_discussions"),
+			resource.TestCheckNoResourceAttr("data.github_organization.test", "members_can_create_teams"),
+			resource.TestCheckNoResourceAttr("data.github_organization.test", "members_can_view_dependency_insights"),
+			resource.TestCheckNoResourceAttr("data.github_organization.test", "default_repository_branch"),
 			resource.TestCheckNoResourceAttr("data.github_organization.test", "web_commit_signoff_required"),
 			resource.TestCheckNoResourceAttr("data.github_organization.test", "members_can_create_pages"),
 			resource.TestCheckNoResourceAttr("data.github_organization.test", "members_can_create_public_pages"),
@@ -147,6 +168,10 @@ func TestAccGithubOrganizationDataSource(t *testing.T) {
 			resource.TestCheckNoResourceAttr("data.github_organization.test", "dependency_graph_enabled_for_new_repositories"),
 			resource.TestCheckNoResourceAttr("data.github_organization.test", "secret_scanning_enabled_for_new_repositories"),
 			resource.TestCheckNoResourceAttr("data.github_organization.test", "secret_scanning_push_protection_enabled_for_new_repositories"),
+			resource.TestCheckNoResourceAttr("data.github_organization.test", "secret_scanning_validity_checks_enabled"),
+			resource.TestCheckNoResourceAttr("data.github_organization.test", "secret_scanning_push_protection_custom_link_enabled"),
+			resource.TestCheckNoResourceAttr("data.github_organization.test", "secret_scanning_push_protection_custom_link"),
+			resource.TestCheckNoResourceAttr("data.github_organization.test", "deploy_keys_enabled_for_repositories"),
 		)
 
 		resource.Test(t, resource.TestCase{

@@ -122,6 +122,51 @@ func resourceGithubOrganizationSettings() *schema.Resource {
 				Default:     false,
 				Description: "Whether or not organization members can fork private repositories.",
 			},
+			"members_can_delete_repositories": {
+				Type:        schema.TypeBool,
+				Optional:    true,
+				Description: "Whether or not members with admin permissions can delete repositories.",
+			},
+			"members_can_change_repo_visibility": {
+				Type:        schema.TypeBool,
+				Optional:    true,
+				Description: "Whether or not members with admin permissions can change repository visibility.",
+			},
+			"members_can_invite_outside_collaborators": {
+				Type:        schema.TypeBool,
+				Optional:    true,
+				Description: "Whether or not members with admin permissions can invite outside collaborators.",
+			},
+			"members_can_delete_issues": {
+				Type:        schema.TypeBool,
+				Optional:    true,
+				Description: "Whether or not members with admin permissions can delete issues.",
+			},
+			"display_commenter_full_name_setting_enabled": {
+				Type:        schema.TypeBool,
+				Optional:    true,
+				Description: "Whether or not members can see commenters' full names in private repositories.",
+			},
+			"readers_can_create_discussions": {
+				Type:        schema.TypeBool,
+				Optional:    true,
+				Description: "Whether or not users with read access can create and comment on discussions.",
+			},
+			"members_can_create_teams": {
+				Type:        schema.TypeBool,
+				Optional:    true,
+				Description: "Whether or not organization members can create teams.",
+			},
+			"members_can_view_dependency_insights": {
+				Type:        schema.TypeBool,
+				Optional:    true,
+				Description: "Whether or not organization members can view dependency insights.",
+			},
+			"default_repository_branch": {
+				Type:        schema.TypeString,
+				Optional:    true,
+				Description: "The default branch name for new repositories in the organization.",
+			},
 			"web_commit_signoff_required": {
 				Type:        schema.TypeBool,
 				Optional:    true,
@@ -169,6 +214,29 @@ func resourceGithubOrganizationSettings() *schema.Resource {
 				Default:     false,
 				Description: "Whether or not secret scanning push protection is enabled for new repositories.",
 			},
+			"secret_scanning_validity_checks_enabled": {
+				Type:        schema.TypeBool,
+				Optional:    true,
+				Default:     false,
+				Description: "Whether or not secret scanning automatic validity checks are enabled for the organization.",
+			},
+			"secret_scanning_push_protection_custom_link_enabled": {
+				Type:        schema.TypeBool,
+				Optional:    true,
+				Default:     false,
+				Description: "Whether or not a custom link is shown to contributors who are blocked from pushing a secret by push protection.",
+			},
+			"secret_scanning_push_protection_custom_link": {
+				Type:        schema.TypeString,
+				Optional:    true,
+				Description: "The URL displayed to contributors who are blocked from pushing a secret by push protection.",
+			},
+			"deploy_keys_enabled_for_repositories": {
+				Type:        schema.TypeBool,
+				Optional:    true,
+				Default:     false,
+				Description: "Whether or not deploy keys may be added and used for repositories in the organization.",
+			},
 		},
 	}
 }
@@ -190,6 +258,13 @@ func buildOrganizationSettings(d *schema.ResourceData, isEnterprise bool) *githu
 		}
 		// For updates, only include if the field has changed
 		return d.HasChange(fieldName)
+	}
+	shouldIncludeOptionalBool := func(fieldName string) bool {
+		if isUpdate {
+			return d.HasChange(fieldName)
+		}
+		_, ok := d.GetOkExists(fieldName) //nolint:staticcheck // Required to distinguish an explicitly configured false value from an omitted optional bool.
+		return ok
 	}
 
 	// Required field - always include if configured (API requires it even if unchanged)
@@ -269,6 +344,33 @@ func buildOrganizationSettings(d *schema.ResourceData, isEnterprise bool) *githu
 	if shouldInclude("members_can_fork_private_repositories") {
 		settings.MembersCanForkPrivateRepos = new(d.Get("members_can_fork_private_repositories").(bool))
 	}
+	if shouldIncludeOptionalBool("members_can_delete_repositories") {
+		settings.MembersCanDeleteRepositories = new(d.Get("members_can_delete_repositories").(bool))
+	}
+	if shouldIncludeOptionalBool("members_can_change_repo_visibility") {
+		settings.MembersCanChangeRepoVisibility = new(d.Get("members_can_change_repo_visibility").(bool))
+	}
+	if shouldIncludeOptionalBool("members_can_invite_outside_collaborators") {
+		settings.MembersCanInviteOutsideCollaborators = new(d.Get("members_can_invite_outside_collaborators").(bool))
+	}
+	if shouldIncludeOptionalBool("members_can_delete_issues") {
+		settings.MembersCanDeleteIssues = new(d.Get("members_can_delete_issues").(bool))
+	}
+	if shouldIncludeOptionalBool("display_commenter_full_name_setting_enabled") {
+		settings.DisplayCommenterFullNameSettingEnabled = new(d.Get("display_commenter_full_name_setting_enabled").(bool))
+	}
+	if shouldIncludeOptionalBool("readers_can_create_discussions") {
+		settings.ReadersCanCreateDiscussions = new(d.Get("readers_can_create_discussions").(bool))
+	}
+	if shouldIncludeOptionalBool("members_can_create_teams") {
+		settings.MembersCanCreateTeams = new(d.Get("members_can_create_teams").(bool))
+	}
+	if shouldIncludeOptionalBool("members_can_view_dependency_insights") {
+		settings.MembersCanViewDependencyInsights = new(d.Get("members_can_view_dependency_insights").(bool))
+	}
+	if shouldInclude("default_repository_branch") {
+		settings.DefaultRepositoryBranch = new(d.Get("default_repository_branch").(string))
+	}
 	if shouldInclude("web_commit_signoff_required") {
 		settings.WebCommitSignoffRequired = new(d.Get("web_commit_signoff_required").(bool))
 	}
@@ -289,6 +391,18 @@ func buildOrganizationSettings(d *schema.ResourceData, isEnterprise bool) *githu
 	}
 	if shouldInclude("secret_scanning_push_protection_enabled_for_new_repositories") {
 		settings.SecretScanningPushProtectionEnabledForNewRepos = new(d.Get("secret_scanning_push_protection_enabled_for_new_repositories").(bool))
+	}
+	if shouldIncludeOptionalBool("secret_scanning_validity_checks_enabled") {
+		settings.SecretScanningValidityChecksEnabled = new(d.Get("secret_scanning_validity_checks_enabled").(bool))
+	}
+	if shouldInclude("secret_scanning_push_protection_custom_link_enabled") {
+		settings.SecretScanningPushProtectionCustomLinkEnabled = new(d.Get("secret_scanning_push_protection_custom_link_enabled").(bool))
+	}
+	if shouldInclude("secret_scanning_push_protection_custom_link") {
+		settings.SecretScanningPushProtectionCustomLink = new(d.Get("secret_scanning_push_protection_custom_link").(string))
+	}
+	if shouldInclude("deploy_keys_enabled_for_repositories") {
+		settings.DeployKeysEnabledForRepositories = new(d.Get("deploy_keys_enabled_for_repositories").(bool))
 	}
 
 	// Enterprise-specific field
@@ -378,6 +492,33 @@ func resourceGithubOrganizationSettingsCreateOrUpdate(d *schema.ResourceData, me
 	if settings.MembersCanForkPrivateRepos != nil {
 		log.Printf("[DEBUG]   MembersCanForkPrivateRepos: %v", *settings.MembersCanForkPrivateRepos)
 	}
+	if settings.MembersCanDeleteRepositories != nil {
+		log.Printf("[DEBUG]   MembersCanDeleteRepositories: %v", *settings.MembersCanDeleteRepositories)
+	}
+	if settings.MembersCanChangeRepoVisibility != nil {
+		log.Printf("[DEBUG]   MembersCanChangeRepoVisibility: %v", *settings.MembersCanChangeRepoVisibility)
+	}
+	if settings.MembersCanInviteOutsideCollaborators != nil {
+		log.Printf("[DEBUG]   MembersCanInviteOutsideCollaborators: %v", *settings.MembersCanInviteOutsideCollaborators)
+	}
+	if settings.MembersCanDeleteIssues != nil {
+		log.Printf("[DEBUG]   MembersCanDeleteIssues: %v", *settings.MembersCanDeleteIssues)
+	}
+	if settings.DisplayCommenterFullNameSettingEnabled != nil {
+		log.Printf("[DEBUG]   DisplayCommenterFullNameSettingEnabled: %v", *settings.DisplayCommenterFullNameSettingEnabled)
+	}
+	if settings.ReadersCanCreateDiscussions != nil {
+		log.Printf("[DEBUG]   ReadersCanCreateDiscussions: %v", *settings.ReadersCanCreateDiscussions)
+	}
+	if settings.MembersCanCreateTeams != nil {
+		log.Printf("[DEBUG]   MembersCanCreateTeams: %v", *settings.MembersCanCreateTeams)
+	}
+	if settings.MembersCanViewDependencyInsights != nil {
+		log.Printf("[DEBUG]   MembersCanViewDependencyInsights: %v", *settings.MembersCanViewDependencyInsights)
+	}
+	if settings.DefaultRepositoryBranch != nil {
+		log.Printf("[DEBUG]   DefaultRepositoryBranch: %s", *settings.DefaultRepositoryBranch)
+	}
 	if settings.WebCommitSignoffRequired != nil {
 		log.Printf("[DEBUG]   WebCommitSignoffRequired: %v", *settings.WebCommitSignoffRequired)
 	}
@@ -398,6 +539,18 @@ func resourceGithubOrganizationSettingsCreateOrUpdate(d *schema.ResourceData, me
 	}
 	if settings.SecretScanningPushProtectionEnabledForNewRepos != nil {
 		log.Printf("[DEBUG]   SecretScanningPushProtectionEnabledForNewRepos: %v", *settings.SecretScanningPushProtectionEnabledForNewRepos)
+	}
+	if settings.SecretScanningValidityChecksEnabled != nil {
+		log.Printf("[DEBUG]   SecretScanningValidityChecksEnabled: %v", *settings.SecretScanningValidityChecksEnabled)
+	}
+	if settings.SecretScanningPushProtectionCustomLinkEnabled != nil {
+		log.Printf("[DEBUG]   SecretScanningPushProtectionCustomLinkEnabled: %v", *settings.SecretScanningPushProtectionCustomLinkEnabled)
+	}
+	if settings.SecretScanningPushProtectionCustomLink != nil {
+		log.Printf("[DEBUG]   SecretScanningPushProtectionCustomLink: %s", *settings.SecretScanningPushProtectionCustomLink)
+	}
+	if settings.DeployKeysEnabledForRepositories != nil {
+		log.Printf("[DEBUG]   DeployKeysEnabledForRepositories: %v", *settings.DeployKeysEnabledForRepositories)
 	}
 
 	orgSettings, _, err := client.Organizations.Edit(ctx, org, settings)
@@ -488,6 +641,33 @@ func resourceGithubOrganizationSettingsRead(d *schema.ResourceData, meta any) er
 	if err = d.Set("members_can_fork_private_repositories", orgSettings.GetMembersCanForkPrivateRepos()); err != nil {
 		return err
 	}
+	if err = d.Set("members_can_delete_repositories", orgSettings.GetMembersCanDeleteRepositories()); err != nil {
+		return err
+	}
+	if err = d.Set("members_can_change_repo_visibility", orgSettings.GetMembersCanChangeRepoVisibility()); err != nil {
+		return err
+	}
+	if err = d.Set("members_can_invite_outside_collaborators", orgSettings.GetMembersCanInviteOutsideCollaborators()); err != nil {
+		return err
+	}
+	if err = d.Set("members_can_delete_issues", orgSettings.GetMembersCanDeleteIssues()); err != nil {
+		return err
+	}
+	if err = d.Set("display_commenter_full_name_setting_enabled", orgSettings.GetDisplayCommenterFullNameSettingEnabled()); err != nil {
+		return err
+	}
+	if err = d.Set("readers_can_create_discussions", orgSettings.GetReadersCanCreateDiscussions()); err != nil {
+		return err
+	}
+	if err = d.Set("members_can_create_teams", orgSettings.GetMembersCanCreateTeams()); err != nil {
+		return err
+	}
+	if err = d.Set("members_can_view_dependency_insights", orgSettings.GetMembersCanViewDependencyInsights()); err != nil {
+		return err
+	}
+	if err = d.Set("default_repository_branch", orgSettings.GetDefaultRepositoryBranch()); err != nil {
+		return err
+	}
 	if err = d.Set("web_commit_signoff_required", orgSettings.GetWebCommitSignoffRequired()); err != nil {
 		return err
 	}
@@ -510,6 +690,18 @@ func resourceGithubOrganizationSettingsRead(d *schema.ResourceData, meta any) er
 		return err
 	}
 	if err = d.Set("secret_scanning_push_protection_enabled_for_new_repositories", orgSettings.GetSecretScanningPushProtectionEnabledForNewRepos()); err != nil {
+		return err
+	}
+	if err = d.Set("secret_scanning_validity_checks_enabled", orgSettings.GetSecretScanningValidityChecksEnabled()); err != nil {
+		return err
+	}
+	if err = d.Set("secret_scanning_push_protection_custom_link_enabled", orgSettings.GetSecretScanningPushProtectionCustomLinkEnabled()); err != nil {
+		return err
+	}
+	if err = d.Set("secret_scanning_push_protection_custom_link", orgSettings.GetSecretScanningPushProtectionCustomLink()); err != nil {
+		return err
+	}
+	if err = d.Set("deploy_keys_enabled_for_repositories", orgSettings.GetDeployKeysEnabledForRepositories()); err != nil {
 		return err
 	}
 	return nil
