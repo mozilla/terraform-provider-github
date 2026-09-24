@@ -184,6 +184,30 @@ func TestResourceGithubEnterpriseMemberReadExpiredInvitation(t *testing.T) {
 	}
 }
 
+func TestGetEnterpriseMemberStateEnterpriseUserAccount(t *testing.T) {
+	t.Parallel()
+
+	mux := http.NewServeMux()
+	mux.HandleFunc("/graphql", func(w http.ResponseWriter, _ *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		mustWrite(w, `{"data":{"enterprise":{"id":"E_enterprise","members":{"nodes":[{"login":"jbuck","user":{"id":"U_jbuck"}}],"pageInfo":{"hasNextPage":false}},"ownerInfo":{"pendingUnaffiliatedMemberInvitations":{"nodes":[],"pageInfo":{"hasNextPage":false}}}}}}`)
+	})
+
+	state, err := getEnterpriseMemberState(t.Context(), newTestGraphQLClient(mux), 100, "example-enterprise", "jbuck")
+	if err != nil {
+		t.Fatalf("getting enterprise member state: %v", err)
+	}
+	if state.status != enterpriseMemberStatusActive {
+		t.Errorf("status = %q, want %q", state.status, enterpriseMemberStatusActive)
+	}
+	if state.login != "jbuck" {
+		t.Errorf("login = %q, want jbuck", state.login)
+	}
+	if state.userID != "U_jbuck" {
+		t.Errorf("user ID = %q, want U_jbuck", state.userID)
+	}
+}
+
 func TestResourceGithubEnterpriseMemberUpdateReinvite(t *testing.T) {
 	t.Parallel()
 

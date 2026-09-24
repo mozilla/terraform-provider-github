@@ -142,8 +142,10 @@ func getEnterpriseMemberState(ctx context.Context, client *githubv4.Client, maxP
 		for _, node := range query.Enterprise.Members.Nodes {
 			login := string(node.User.Login)
 			userID := string(node.User.ID)
-			if login == "" {
-				// An enterprise-managed account wraps the underlying User.
+			if userID == "" {
+				// The decoder can populate login in both inline fragments. The top-level
+				// User ID distinguishes a User from an EnterpriseUserAccount, which
+				// wraps the underlying User.
 				login = string(node.EnterpriseUserAccount.Login)
 				userID = string(node.EnterpriseUserAccount.User.ID)
 			}
