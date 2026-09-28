@@ -1,0 +1,36 @@
+---
+page_title: "{{.Name}} ({{.Type}}) - {{.RenderedProviderName}}"
+description: |-
+{{ .Description | plainmarkdown | trimspace | prefixlines "  " }}
+---
+
+# {{.Name}} ({{.Type}})
+
+{{ .Description | trimspace }}
+
+This resource is available on GitHub Enterprise Cloud. It requires enterprise billing write permission. The ability to assign particular resource types also depends on the token's role.
+
+~> This resource is authoritative over all four assignment types. Resources assigned outside Terraform are removed on the next apply. Adding a resource that belongs to another cost center reassigns it. Destroying this resource removes all assignments, but keeps the cost center.
+
+~> Use only one `github_enterprise_cost_center_resources` resource per cost center. GitHub does not support duplicate assignments across cost centers.
+
+{{ if .HasExamples -}}
+## Example Usage
+
+{{- range .ExampleFiles }}
+
+{{ tffile . }}
+{{- end }}
+{{- end }}
+
+{{ .SchemaMarkdown | trimspace }}
+{{- if .HasImportIDConfig }}
+
+## Import
+
+Import assignments using the enterprise slug and cost center ID, separated by a colon.
+
+In Terraform v1.5.0 and later, the [`import` block](https://developer.hashicorp.com/terraform/language/import) can be used with the `id` attribute, for example:
+
+{{tffile .ImportIDConfigFile }}
+{{- end }}

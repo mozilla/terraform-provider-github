@@ -262,6 +262,8 @@ func NewProvider(version, commit string) func() *schema.Provider {
 				"github_enterprise_team":                                                resourceGithubEnterpriseTeam(),
 				"github_enterprise_team_members":                                        resourceGithubEnterpriseTeamMembers(),
 				"github_enterprise_team_organizations":                                  resourceGithubEnterpriseTeamOrganizations(),
+				"github_enterprise_cost_center":                                         resourceGithubEnterpriseCostCenter(),
+				"github_enterprise_cost_center_resources":                               resourceGithubEnterpriseCostCenterResources(),
 				"github_enterprise_organization_app_installation":                       resourceGithubEnterpriseOrganizationAppInstallation(),
 				"github_enterprise_actions_workflow_permissions":                        resourceGithubEnterpriseActionsWorkflowPermissions(),
 				"github_actions_organization_workflow_permissions":                      resourceGithubActionsOrganizationWorkflowPermissions(),
