@@ -86,6 +86,28 @@ func (change costCenterResourcesChange) empty() bool {
 	return len(change.Users)+len(change.Organizations)+len(change.Repositories)+len(change.EnterpriseTeams) == 0
 }
 
+// The 50-resource limit applies to the combined total across all resource types.
+func (change costCenterResourcesChange) batches() []costCenterResourcesChange {
+	var batches []costCenterResourcesChange
+	for !change.empty() {
+		remaining := 50
+		take := func(resources *[]string) []string {
+			n := min(len(*resources), remaining)
+			batch := (*resources)[:n]
+			*resources = (*resources)[n:]
+			remaining -= n
+			return batch
+		}
+		batches = append(batches, costCenterResourcesChange{
+			Users:           take(&change.Users),
+			Organizations:   take(&change.Organizations),
+			Repositories:    take(&change.Repositories),
+			EnterpriseTeams: take(&change.EnterpriseTeams),
+		})
+	}
+	return batches
+}
+
 func reconcileCostCenterResources(ctx context.Context, owner *Owner, enterprise, id string, desired costCenterResourcesChange) error {
 	center, err := getCostCenter(ctx, owner.v3client, enterprise, id)
 	if err != nil {
@@ -98,13 +120,13 @@ func reconcileCostCenterResources(ctx context.Context, owner *Owner, enterprise,
 	remove := costCenterResourceDifference(actual, desired)
 	add := costCenterResourceDifference(desired, actual)
 	path := costCenterPath(enterprise, id) + "/resource"
-	if !remove.empty() {
-		if err := costCenterRequest(ctx, owner.v3client, http.MethodDelete, path, remove, nil); err != nil {
+	for _, batch := range remove.batches() {
+		if err := costCenterRequest(ctx, owner.v3client, http.MethodDelete, path, batch, nil); err != nil {
 			return fmt.Errorf("remove resources from cost center %q: %w", id, err)
 		}
 	}
-	if !add.empty() {
-		if err := costCenterRequest(ctx, owner.v3client, http.MethodPost, path, add, nil); err != nil {
+	for _, batch := range add.batches() {
+		if err := costCenterRequest(ctx, owner.v3client, http.MethodPost, path, batch, nil); err != nil {
 			return fmt.Errorf("add resources to cost center %q: %w", id, err)
 		}
 	}
