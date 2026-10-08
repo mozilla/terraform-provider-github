@@ -1,17 +1,58 @@
 package github
 
 import (
+	"encoding/json"
 	"fmt"
 	"regexp"
 	"testing"
 
+	"github.com/google/go-github/v92/github"
 	"github.com/hashicorp/terraform-plugin-sdk/v2/helper/schema"
+	"github.com/hashicorp/terraform-plugin-sdk/v2/terraform"
 	"github.com/hashicorp/terraform-plugin-testing/helper/acctest"
 	"github.com/hashicorp/terraform-plugin-testing/helper/resource"
 	"github.com/hashicorp/terraform-plugin-testing/knownvalue"
 	"github.com/hashicorp/terraform-plugin-testing/statecheck"
 	"github.com/hashicorp/terraform-plugin-testing/tfjsonpath"
 )
+
+func TestOrganizationRulesetBusinessTeamBypass(t *testing.T) {
+	t.Parallel()
+
+	const actorsJSON = `[{"actor_id":19997701,"actor_type":"BusinessTeam","bypass_mode":"always"}]`
+	var actors []*github.BypassActor
+	if err := json.Unmarshal([]byte(actorsJSON), &actors); err != nil {
+		t.Fatal(err)
+	}
+
+	r := resourceGithubOrganizationRuleset()
+	config := map[string]any{
+		"name":          "testing",
+		"target":        "branch",
+		"enforcement":   "active",
+		"bypass_actors": []any{map[string]any{"actor_id": 19997701, "actor_type": "BusinessTeam", "bypass_mode": "always"}},
+		"conditions": []any{map[string]any{
+			"ref_name":        []any{map[string]any{"include": []any{"~ALL"}, "exclude": []any{}}},
+			"repository_name": []any{map[string]any{"include": []any{"~ALL"}, "exclude": []any{}}},
+		}},
+		"rules": []any{map[string]any{"deletion": true}},
+	}
+	if diags := r.Validate(terraform.NewResourceConfigRaw(config)); diags.HasError() {
+		t.Fatalf("schema rejected BusinessTeam bypass actor: %v", diags)
+	}
+
+	d := schema.TestResourceDataRaw(t, r.Schema, config)
+	if err := d.Set("bypass_actors", flattenBypassActors(t.Context(), actors)); err != nil {
+		t.Fatal(err)
+	}
+	encoded, err := json.Marshal(expandBypassActors(d.Get("bypass_actors").([]any)))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if string(encoded) != actorsJSON {
+		t.Fatalf("bypass actor changed during API/state round trip: got %s, want %s", encoded, actorsJSON)
+	}
+}
 
 func TestAccGithubOrganizationRuleset(t *testing.T) {
 	t.Parallel()
