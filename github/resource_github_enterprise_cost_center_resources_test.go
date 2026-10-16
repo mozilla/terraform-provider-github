@@ -23,7 +23,7 @@ func TestCostCenterResourcesBatchRequests(t *testing.T) {
 					want := map[string]costCenterResourcesChange{}
 					for _, method := range []string{http.MethodDelete, http.MethodPost} {
 						var change costCenterResourcesChange
-						for i := 0; i < count; i++ {
+						for i := range count {
 							kind := 0
 							if mixed {
 								kind = i % 4
@@ -45,7 +45,9 @@ func TestCostCenterResourcesBatchRequests(t *testing.T) {
 					const path = "/enterprises/example/settings/billing/cost-centers/cc-1"
 					server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, req *http.Request) {
 						if req.URL.Path == path && req.Method == http.MethodGet {
-							json.NewEncoder(w).Encode(costCenter{Resources: actual})
+							if err := json.NewEncoder(w).Encode(costCenter{Resources: actual}); err != nil {
+								t.Error(err)
+							}
 							return
 						}
 						if req.URL.Path != path+"/resource" || (req.Method != http.MethodPost && req.Method != http.MethodDelete) {

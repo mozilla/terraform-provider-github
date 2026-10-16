@@ -31,7 +31,9 @@ func TestResourceGithubEnterpriseCostCenterLifecycle(t *testing.T) {
 		if body["name"] != "Engineering" || body["ai_credit_pool_enabled"] != false {
 			t.Errorf("create body = %#v", body)
 		}
-		json.NewEncoder(w).Encode(center)
+		if err := json.NewEncoder(w).Encode(center); err != nil {
+			t.Error(err)
+		}
 	})
 	mux.HandleFunc(path+"/cc-1", func(w http.ResponseWriter, req *http.Request) {
 		if req.Header.Get("X-GitHub-Api-Version") != costCenterAPIVersion {
@@ -43,7 +45,9 @@ func TestResourceGithubEnterpriseCostCenterLifecycle(t *testing.T) {
 				w.WriteHeader(http.StatusNotFound)
 				return
 			}
-			json.NewEncoder(w).Encode(center)
+			if err := json.NewEncoder(w).Encode(center); err != nil {
+				t.Error(err)
+			}
 		case http.MethodPatch:
 			var body map[string]any
 			if err := json.NewDecoder(req.Body).Decode(&body); err != nil {
@@ -55,10 +59,14 @@ func TestResourceGithubEnterpriseCostCenterLifecycle(t *testing.T) {
 			if enabled, ok := body["ai_credit_pool_enabled"].(bool); ok {
 				center.AICreditPoolEnabled = enabled
 			}
-			json.NewEncoder(w).Encode(center)
+			if err := json.NewEncoder(w).Encode(center); err != nil {
+				t.Error(err)
+			}
 		case http.MethodDelete:
 			archived = true
-			json.NewEncoder(w).Encode(map[string]string{"message": "Cost center successfully deleted."})
+			if err := json.NewEncoder(w).Encode(map[string]string{"message": "Cost center successfully deleted."}); err != nil {
+				t.Error(err)
+			}
 		default:
 			w.WriteHeader(http.StatusMethodNotAllowed)
 		}
@@ -99,7 +107,9 @@ func TestResourceGithubEnterpriseCostCenterResourcesReconcile(t *testing.T) {
 	var added, removed costCenterResourcesChange
 	mux := http.NewServeMux()
 	mux.HandleFunc(path, func(w http.ResponseWriter, req *http.Request) {
-		json.NewEncoder(w).Encode(costCenter{ID: "cc-1", State: "active", Resources: resources})
+		if err := json.NewEncoder(w).Encode(costCenter{ID: "cc-1", State: "active", Resources: resources}); err != nil {
+			t.Error(err)
+		}
 	})
 	mux.HandleFunc(path+"/resource", func(w http.ResponseWriter, req *http.Request) {
 		if req.Header.Get("X-GitHub-Api-Version") != costCenterAPIVersion {
@@ -126,7 +136,9 @@ func TestResourceGithubEnterpriseCostCenterResourcesReconcile(t *testing.T) {
 		default:
 			w.WriteHeader(http.StatusMethodNotAllowed)
 		}
-		json.NewEncoder(w).Encode(map[string]string{"message": "ok"})
+		if err := json.NewEncoder(w).Encode(map[string]string{"message": "ok"}); err != nil {
+			t.Error(err)
+		}
 	})
 	server := httptest.NewServer(mux)
 	defer server.Close()
@@ -158,7 +170,9 @@ func TestResourceGithubEnterpriseCostCenterMissingOnRead(t *testing.T) {
 			server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, req *http.Request) {
 				w.WriteHeader(status)
 				if status == http.StatusOK {
-					json.NewEncoder(w).Encode(costCenter{ID: "cc-1", State: "deleted"})
+					if err := json.NewEncoder(w).Encode(costCenter{ID: "cc-1", State: "deleted"}); err != nil {
+						t.Error(err)
+					}
 				}
 			}))
 			defer server.Close()

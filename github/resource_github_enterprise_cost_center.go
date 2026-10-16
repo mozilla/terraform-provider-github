@@ -62,7 +62,7 @@ func resourceGithubEnterpriseCostCenterCreate(ctx context.Context, d *schema.Res
 	enterprise := d.Get("enterprise_slug").(string)
 	name := d.Get("name").(string)
 	change := costCenterChange{Name: &name}
-	if value, ok := d.GetOkExists("ai_credit_pool_enabled"); ok {
+	if value, ok := d.GetOkExists("ai_credit_pool_enabled"); ok { //nolint:staticcheck // Required to distinguish an explicitly configured false value from an omitted optional bool.
 		enabled := value.(bool)
 		change.AICreditPoolEnabled = &enabled
 	}
