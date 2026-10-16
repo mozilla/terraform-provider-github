@@ -4,8 +4,10 @@ import (
 	"context"
 	"strconv"
 
+	"github.com/google/go-github/v92/github"
 	"github.com/hashicorp/terraform-plugin-sdk/v2/diag"
 	"github.com/hashicorp/terraform-plugin-sdk/v2/helper/schema"
+	"github.com/hashicorp/terraform-plugin-sdk/v2/helper/validation"
 )
 
 func dataSourceGithubUser() *schema.Resource {
@@ -14,8 +16,15 @@ func dataSourceGithubUser() *schema.Resource {
 
 		Schema: map[string]*schema.Schema{
 			"username": {
-				Type:     schema.TypeString,
-				Required: true,
+				Type:         schema.TypeString,
+				Optional:     true,
+				ExactlyOneOf: []string{"username", "user_id"},
+			},
+			"user_id": {
+				Type:             schema.TypeInt,
+				Optional:         true,
+				ExactlyOneOf:     []string{"username", "user_id"},
+				ValidateDiagFunc: validation.ToDiagFunc(validation.IntAtLeast(1)),
 			},
 			"login": {
 				Type:     schema.TypeString,
@@ -108,7 +117,13 @@ func dataSourceGithubUserRead(ctx context.Context, d *schema.ResourceData, meta 
 
 	client := meta.(*Owner).v3client
 
-	user, _, err := client.Users.Get(ctx, username)
+	var user *github.User
+	var err error
+	if userID, ok := d.GetOk("user_id"); ok {
+		user, _, err = client.Users.GetByID(ctx, int64(userID.(int)))
+	} else {
+		user, _, err = client.Users.Get(ctx, username)
+	}
 	if err != nil {
 		return diag.FromErr(err)
 	}

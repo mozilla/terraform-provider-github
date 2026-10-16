@@ -16,6 +16,15 @@ data "github_user" "example" {
   username = "example"
 }
 
+# Retrieve information using a stable numeric GitHub user ID.
+data "github_user" "by_id" {
+  user_id = 583231
+}
+
+output "login_from_id" {
+  value = data.github_user.by_id.login
+}
+
 # Retrieve information about the currently authenticated user.
 data "github_user" "current" {
   username = ""
@@ -28,7 +37,8 @@ output "current_github_login" {
 
 ## Argument Reference
 
-- `username` - (Required) The username. Use an empty string `""` to retrieve information about the currently authenticated user.
+- `username` - (Optional) The username. Use an empty string `""` to retrieve information about the currently authenticated user. Exactly one of `username` or `user_id` must be specified.
+- `user_id` - (Optional) The positive numeric GitHub user ID (not the Node ID). Looks up the user's current login and profile. Exactly one of `username` or `user_id` must be specified.
 
 ## Attributes Reference
 
