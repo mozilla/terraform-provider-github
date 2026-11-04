@@ -1,0 +1,1 @@
+terraform import github_actions_repository_policy.example example:10894

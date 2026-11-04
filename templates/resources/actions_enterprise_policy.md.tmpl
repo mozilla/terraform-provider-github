@@ -1,0 +1,48 @@
+---
+page_title: "{{.Name}} ({{.Type}}) - {{.RenderedProviderName}}"
+description: |-
+{{ .Description | plainmarkdown | trimspace | prefixlines "  " }}
+---
+
+# {{.Name}} ({{.Type}})
+
+{{ .Description | trimspace }}
+
+This resource uses the [GitHub Actions policies REST API](https://docs.github.com/en/enterprise-cloud@latest/rest/actions/policies) and requires enterprise owner access using an OAuth token or a personal access token (classic). Evaluate mode requires GitHub Enterprise Cloud.
+
+Each resource manages a single policy defined at the enterprise level. Inherited policies must be managed at their source.
+
+~> An active lockfile requirement blocks targeted workflows that have not been onboarded to their repository's workflow dependency lockfile. Start with `evaluate` while onboarding workflows. See [Enforcing lockfiles for action dependencies](https://docs.github.com/en/actions/how-tos/administer/enforce-workflow-lockfiles).
+
+Omit `workflow_path` to target all workflows. Removing a configured `workflow_path` block resets targeting to all workflows. To restrict workflows by exclusion alone, set `exclude` and leave `include` empty. `~ALL` cannot be excluded or combined with other included workflow patterns.
+
+An empty `restrict_actions_actors` or `restrict_action_events` block blocks all actors or events, respectively. Remove the block to remove that restriction. Actor and event collections are unordered.
+
+The `conditions` block must combine exactly one organization target (`organization_name`, `organization_id`, or `organization_property`) with exactly one repository target (`repository_name` or `repository_property`).
+
+{{ if .HasExamples -}}
+## Example Usage
+
+{{- range .ExampleFiles }}
+
+{{ tffile . }}
+{{- end }}
+{{- end }}
+
+{{ .SchemaMarkdown | trimspace }}
+
+## Import
+
+Import a policy using the enterprise slug and numeric policy ID, separated by a colon.
+{{- if .HasImportIDConfig }}
+
+In Terraform v1.5.0 and later, the [`import` block](https://developer.hashicorp.com/terraform/language/import) can be used with the `id` attribute, for example:
+
+{{tffile .ImportIDConfigFile }}
+{{- end }}
+{{- if .HasImport }}
+
+The [`terraform import` command](https://developer.hashicorp.com/terraform/cli/commands/import) can be used, for example:
+
+{{codefile "shell" .ImportFile }}
+{{- end }}

@@ -174,10 +174,12 @@ func NewProvider(version, commit string) func() *schema.Provider {
 
 			ResourcesMap: map[string]*schema.Resource{
 				"github_enterprise_actions_permissions":                                 resourceGithubActionsEnterprisePermissions(),
+				"github_actions_enterprise_policy":                                      resourceGithubActionsEnterprisePolicy(),
 				"github_actions_environment_secret":                                     resourceGithubActionsEnvironmentSecret(),
 				"github_actions_environment_variable":                                   resourceGithubActionsEnvironmentVariable(),
 				"github_actions_organization_oidc_subject_claim_customization_template": resourceGithubActionsOrganizationOIDCSubjectClaimCustomizationTemplate(),
 				"github_actions_organization_permissions":                               resourceGithubActionsOrganizationPermissions(),
+				"github_actions_organization_policy":                                    resourceGithubActionsOrganizationPolicy(),
 				"github_actions_organization_secret":                                    resourceGithubActionsOrganizationSecret(),
 				"github_actions_organization_secret_repositories":                       resourceGithubActionsOrganizationSecretRepositories(),
 				"github_actions_organization_secret_repository":                         resourceGithubActionsOrganizationSecretRepository(),
@@ -187,6 +189,7 @@ func NewProvider(version, commit string) func() *schema.Provider {
 				"github_actions_repository_access_level":                                resourceGithubActionsRepositoryAccessLevel(),
 				"github_actions_repository_oidc_subject_claim_customization_template":   resourceGithubActionsRepositoryOIDCSubjectClaimCustomizationTemplate(),
 				"github_actions_repository_permissions":                                 resourceGithubActionsRepositoryPermissions(),
+				"github_actions_repository_policy":                                      resourceGithubActionsRepositoryPolicy(),
 				"github_actions_runner_group":                                           resourceGithubActionsRunnerGroup(),
 				"github_actions_hosted_runner":                                          resourceGithubActionsHostedRunner(),
 				"github_actions_secret":                                                 resourceGithubActionsSecret(),
