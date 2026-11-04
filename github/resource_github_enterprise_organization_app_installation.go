@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"net/http"
 	"slices"
+	"time"
 
 	"github.com/google/go-github/v92/github"
 	"github.com/hashicorp/terraform-plugin-log/tflog"
@@ -29,6 +30,14 @@ const enterpriseAppInstallationRepositorySelectionNone = "none"
 // maxEnterpriseAppInstallationRepositoriesPerRequest is the number of repositories the enterprise
 // organization installation endpoints accept in a single request.
 const maxEnterpriseAppInstallationRepositoriesPerRequest = 50
+
+// enterpriseOrganizationAppInstallation preserves permission names unknown to go-github.
+// The explicit permissions field overrides the embedded client's fixed permission struct
+// when decoding API responses.
+type enterpriseOrganizationAppInstallation struct {
+	github.Installation
+	Permissions map[string]string `json:"permissions"`
+}
 
 func resourceGithubEnterpriseOrganizationAppInstallation() *schema.Resource {
 	return &schema.Resource{
@@ -92,6 +101,28 @@ func resourceGithubEnterpriseOrganizationAppInstallation() *schema.Resource {
 				Type:        schema.TypeInt,
 				Computed:    true,
 				Description: "The numeric ID of the app installation.",
+			},
+			"permissions": {
+				Type:        schema.TypeMap,
+				Computed:    true,
+				Elem:        &schema.Schema{Type: schema.TypeString},
+				Description: "The permissions granted to the GitHub App installation, keyed by permission name with access levels as values. Includes permission names not yet known to the provider's GitHub client.",
+			},
+			"events": {
+				Type:        schema.TypeSet,
+				Computed:    true,
+				Elem:        &schema.Schema{Type: schema.TypeString},
+				Description: "The events the GitHub App installation subscribes to.",
+			},
+			"created_at": {
+				Type:        schema.TypeString,
+				Computed:    true,
+				Description: "The time the GitHub App installation was created, in RFC 3339 format.",
+			},
+			"updated_at": {
+				Type:        schema.TypeString,
+				Computed:    true,
+				Description: "The time the GitHub App installation was last updated, in RFC 3339 format.",
 			},
 			"app_slug": {
 				Type:        schema.TypeString,
@@ -165,8 +196,14 @@ func resourceGithubEnterpriseOrganizationAppInstallationCreate(ctx context.Conte
 		"client_id":       clientID,
 	})
 
-	installation, _, err := client.Enterprise.InstallApp(ctx, enterpriseSlug, organization, req)
+	request, err := client.NewRequest(ctx, http.MethodPost,
+		fmt.Sprintf("enterprises/%s/apps/organizations/%s/installations", enterpriseSlug, organization), req)
 	if err != nil {
+		return diag.FromErr(err)
+	}
+
+	var installation enterpriseOrganizationAppInstallation
+	if _, err := client.Do(request, &installation); err != nil {
 		return diag.FromErr(err)
 	}
 
@@ -185,6 +222,10 @@ func resourceGithubEnterpriseOrganizationAppInstallationCreate(ctx context.Conte
 	}
 
 	if err := d.Set("app_slug", installation.GetAppSlug()); err != nil {
+		return diag.FromErr(err)
+	}
+
+	if err := setEnterpriseAppInstallationMetadata(d, &installation); err != nil {
 		return diag.FromErr(err)
 	}
 
@@ -235,6 +276,10 @@ func resourceGithubEnterpriseOrganizationAppInstallationRead(ctx context.Context
 		if err != nil {
 			return diag.FromErr(err)
 		}
+	}
+
+	if err := setEnterpriseAppInstallationMetadata(d, installation); err != nil {
+		return diag.FromErr(err)
 	}
 
 	repositorySelection := normalizeEnterpriseAppInstallationRepositorySelection(
@@ -453,18 +498,32 @@ func removeEnterpriseAppInstallationRepositories(ctx context.Context, client *gi
 // findEnterpriseAppInstallationByClientID returns the installation of the app with the given client
 // ID on an enterprise owned organization, or nil when the app is not installed. The API offers no
 // lookup by client ID, so this scans every installation on the organization.
-func findEnterpriseAppInstallationByClientID(ctx context.Context, client *github.Client, maxPerPage int, enterpriseSlug, organization, clientID string) (*github.Installation, error) {
-	for installation, err := range client.Enterprise.ListAppInstallationsIter(ctx, enterpriseSlug, organization, &github.ListOptions{PerPage: maxPerPage}) {
+func findEnterpriseAppInstallationByClientID(ctx context.Context, client *github.Client, maxPerPage int, enterpriseSlug, organization, clientID string) (*enterpriseOrganizationAppInstallation, error) {
+	for page := 1; ; {
+		u := fmt.Sprintf("enterprises/%s/apps/organizations/%s/installations?page=%d", enterpriseSlug, organization, page)
+		if maxPerPage > 0 {
+			u += fmt.Sprintf("&per_page=%d", maxPerPage)
+		}
+		req, err := client.NewRequest(ctx, http.MethodGet, u, nil)
+		if err != nil {
+			return nil, err
+		}
+
+		var installations []*enterpriseOrganizationAppInstallation
+		resp, err := client.Do(req, &installations)
 		if err != nil {
 			return nil, fmt.Errorf("could not list app installations for organization %q: %w", organization, err)
 		}
-
-		if installation.GetClientID() == clientID {
-			return installation, nil
+		for _, installation := range installations {
+			if installation.GetClientID() == clientID {
+				return installation, nil
+			}
 		}
+		if resp.NextPage == 0 {
+			return nil, nil
+		}
+		page = resp.NextPage
 	}
-
-	return nil, nil
 }
 
 // listEnterpriseAppInstallationRepositories returns the names of every repository an installation
@@ -490,4 +549,28 @@ func isEnterpriseAppInstallationNotFound(err error) bool {
 	ghErr, ok := errors.AsType[*github.ErrorResponse](err)
 
 	return ok && ghErr.Response != nil && ghErr.Response.StatusCode == http.StatusNotFound
+}
+
+// setEnterpriseAppInstallationMetadata records the computed metadata returned by GitHub.
+func setEnterpriseAppInstallationMetadata(d *schema.ResourceData, installation *enterpriseOrganizationAppInstallation) error {
+	createdAt, updatedAt := "", ""
+	if installation.CreatedAt != nil {
+		createdAt = installation.CreatedAt.Format(time.RFC3339)
+	}
+	if installation.UpdatedAt != nil {
+		updatedAt = installation.UpdatedAt.Format(time.RFC3339)
+	}
+
+	for key, value := range map[string]any{
+		"permissions": installation.Permissions,
+		"events":      installation.Events,
+		"created_at":  createdAt,
+		"updated_at":  updatedAt,
+	} {
+		if err := d.Set(key, value); err != nil {
+			return err
+		}
+	}
+
+	return nil
 }

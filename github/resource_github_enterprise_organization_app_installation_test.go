@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"net/http"
 	"net/http/httptest"
+	"reflect"
 	"regexp"
 	"slices"
 	"testing"
@@ -112,6 +113,129 @@ func TestResourceGithubEnterpriseOrganizationAppInstallationWithoutRepositoryPer
 	}
 	if installRequests != 2 {
 		t.Errorf("install request count after update = %d, want 2", installRequests)
+	}
+}
+
+func TestResourceGithubEnterpriseOrganizationAppInstallationMetadata(t *testing.T) {
+	t.Parallel()
+
+	metadata := `"permissions":{"contents":"read","enterprise_organization_installations":"write","repository_creation":"write","installation_repositories":"write","future_permission":"read"},"events":["push","pull_request","push"],"created_at":"2026-01-02T03:04:05-05:00","updated_at":"2026-01-03T04:05:06Z"`
+	requests := 0
+	mux := http.NewServeMux()
+	mux.HandleFunc("/enterprises/example/apps/organizations/example-org/installations", func(w http.ResponseWriter, req *http.Request) {
+		requests++
+		installation := `{"id":1234,"client_id":"Iv1.example","app_slug":"example-app","repository_selection":"all",` + metadata + `}`
+		switch req.Method {
+		case http.MethodPost:
+			w.WriteHeader(http.StatusCreated)
+			mustWrite(w, installation)
+		case http.MethodGet:
+			mustWrite(w, `[`+installation+`]`)
+		default:
+			t.Errorf("unexpected method: %s", req.Method)
+			w.WriteHeader(http.StatusMethodNotAllowed)
+		}
+	})
+	server := httptest.NewServer(mux)
+	defer server.Close()
+
+	r := resourceGithubEnterpriseOrganizationAppInstallation()
+	d := schema.TestResourceDataRaw(t, r.Schema, map[string]any{
+		"enterprise_slug":      "example",
+		"organization":         "example-org",
+		"client_id":            "Iv1.example",
+		"repository_selection": "all",
+	})
+	meta := &Owner{v3client: mustCreateTestGitHubClient(t, server.URL+"/"), maxPerPage: 100}
+
+	checkMetadata := func(permissions map[string]any, events []any, createdAt, updatedAt string) {
+		t.Helper()
+		if got := d.Get("permissions"); !reflect.DeepEqual(got, permissions) {
+			t.Errorf("permissions = %v, want %v", got, permissions)
+		}
+		gotEvents := d.Get("events").(*schema.Set)
+		if gotEvents.Len() != len(events) {
+			t.Errorf("events = %v, want %v", gotEvents.List(), events)
+		}
+		for _, event := range events {
+			if !gotEvents.Contains(event) {
+				t.Errorf("events = %v, missing %v", gotEvents.List(), event)
+			}
+		}
+		for key, want := range map[string]string{"created_at": createdAt, "updated_at": updatedAt} {
+			if got := d.Get(key); got != want {
+				t.Errorf("%s = %q, want %q", key, got, want)
+			}
+		}
+	}
+
+	if diags := resourceGithubEnterpriseOrganizationAppInstallationCreate(t.Context(), d, meta); diags.HasError() {
+		t.Fatalf("create diagnostics: %v", diags)
+	}
+	checkMetadata(map[string]any{"contents": "read", "enterprise_organization_installations": "write", "repository_creation": "write", "installation_repositories": "write", "future_permission": "read"},
+		[]any{"push", "pull_request"}, "2026-01-02T03:04:05-05:00", "2026-01-03T04:05:06Z")
+
+	// Refresh replaces removed permissions and subscriptions and picks up changed timestamps.
+	metadata = `"permissions":{"issues":"write","future_permission":"write"},"events":["issues"],"created_at":"2026-01-02T03:04:05-05:00","updated_at":"2026-02-03T04:05:06Z"`
+	if diags := resourceGithubEnterpriseOrganizationAppInstallationRead(t.Context(), d, meta); diags.HasError() {
+		t.Fatalf("read diagnostics: %v", diags)
+	}
+	checkMetadata(map[string]any{"issues": "write", "future_permission": "write"}, []any{"issues"}, "2026-01-02T03:04:05-05:00", "2026-02-03T04:05:06Z")
+
+	// Missing metadata clears old values without inventing zero-date timestamps.
+	metadata = `"permissions":null,"events":null,"created_at":null,"updated_at":null`
+	if diags := resourceGithubEnterpriseOrganizationAppInstallationRead(t.Context(), d, meta); diags.HasError() {
+		t.Fatalf("read diagnostics: %v", diags)
+	}
+	checkMetadata(map[string]any{}, nil, "", "")
+	if requests != 3 {
+		t.Errorf("API requests = %d, want 3 (one per create/read)", requests)
+	}
+}
+
+func TestFindEnterpriseAppInstallationByClientIDPagination(t *testing.T) {
+	t.Parallel()
+
+	for _, clientID := range []string{"Iv1.example", "missing"} {
+		t.Run(clientID, func(t *testing.T) {
+			t.Parallel()
+
+			requests := 0
+			mux := http.NewServeMux()
+			mux.HandleFunc("/enterprises/example/apps/organizations/example-org/installations", func(w http.ResponseWriter, req *http.Request) {
+				requests++
+				if got := req.URL.Query().Get("per_page"); got != "1" {
+					t.Errorf("per_page = %q, want 1", got)
+				}
+				switch req.URL.Query().Get("page") {
+				case "1":
+					w.Header().Set("Link", fmt.Sprintf(`<http://%s%s?page=2&per_page=1>; rel="next"`, req.Host, req.URL.Path))
+					mustWrite(w, `[{"id":1,"client_id":"other"}]`)
+				case "2":
+					mustWrite(w, `[{"id":1234,"client_id":"Iv1.example","permissions":{"future_permission":"write"}}]`)
+				default:
+					t.Errorf("unexpected page: %s", req.URL.RawQuery)
+					w.WriteHeader(http.StatusBadRequest)
+				}
+			})
+			server := httptest.NewServer(mux)
+			defer server.Close()
+
+			installation, err := findEnterpriseAppInstallationByClientID(t.Context(), mustCreateTestGitHubClient(t, server.URL+"/"), 1, "example", "example-org", clientID)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if clientID == "missing" {
+				if installation != nil {
+					t.Errorf("installation = %v, want nil", installation)
+				}
+			} else if installation == nil || installation.GetID() != 1234 || installation.Permissions["future_permission"] != "write" {
+				t.Errorf("installation = %v, want installation 1234 with future_permission=write", installation)
+			}
+			if requests != 2 {
+				t.Errorf("requests = %d, want 2", requests)
+			}
+		})
 	}
 }
 

@@ -64,8 +64,12 @@ resource "github_enterprise_organization_app_installation" "organization_runner"
 ### Read-Only
 
 - `app_slug` (String) The slug of the installed app.
+- `created_at` (String) The time the GitHub App installation was created, in RFC 3339 format.
+- `events` (Set of String) The events the GitHub App installation subscribes to.
 - `id` (String) The ID of this resource.
 - `installation_id` (Number) The numeric ID of the app installation.
+- `permissions` (Map of String) The permissions granted to the GitHub App installation, keyed by permission name with access levels as values. Includes permission names not yet known to the provider's GitHub client.
+- `updated_at` (String) The time the GitHub App installation was last updated, in RFC 3339 format.
 
 ## Import
 
