@@ -30,6 +30,9 @@ func TestResourceGithubEnterpriseOrganizationAppInstallationWithoutRepositoryPer
 	installed := false
 	installRequests := 0
 	mux := http.NewServeMux()
+	mux.HandleFunc("/apps/example-app", func(w http.ResponseWriter, req *http.Request) {
+		mustWrite(w, `{"owner":{"id":42,"login":"app-publisher","type":"Organization"}}`)
+	})
 	mux.HandleFunc("/enterprises/example/apps/organizations/example-org/installations", func(w http.ResponseWriter, req *http.Request) {
 		switch req.Method {
 		case http.MethodPost:
@@ -122,6 +125,15 @@ func TestResourceGithubEnterpriseOrganizationAppInstallationMetadata(t *testing.
 	metadata := `"permissions":{"contents":"read","enterprise_organization_installations":"write","repository_creation":"write","installation_repositories":"write","future_permission":"read"},"events":["push","pull_request","push"],"created_at":"2026-01-02T03:04:05-05:00","updated_at":"2026-01-03T04:05:06Z"`
 	requests := 0
 	mux := http.NewServeMux()
+	appRequests := 0
+	owner := `{"id":42,"login":"app-publisher","node_id":"publisher-node","type":"Organization","html_url":"https://github.com/app-publisher"}`
+	mux.HandleFunc("/apps/example-app", func(w http.ResponseWriter, req *http.Request) {
+		appRequests++
+		if req.Method != http.MethodGet {
+			t.Errorf("app request method = %s, want GET", req.Method)
+		}
+		mustWrite(w, `{"owner":`+owner+`}`)
+	})
 	mux.HandleFunc("/enterprises/example/apps/organizations/example-org/installations", func(w http.ResponseWriter, req *http.Request) {
 		requests++
 		installation := `{"id":1234,"client_id":"Iv1.example","app_slug":"example-app","repository_selection":"all",` + metadata + `}`
@@ -175,6 +187,28 @@ func TestResourceGithubEnterpriseOrganizationAppInstallationMetadata(t *testing.
 	checkMetadata(map[string]any{"contents": "read", "enterprise_organization_installations": "write", "repository_creation": "write", "installation_repositories": "write", "future_permission": "read"},
 		[]any{"push", "pull_request"}, "2026-01-02T03:04:05-05:00", "2026-01-03T04:05:06Z")
 
+	checkOwner := func(want map[string]any) {
+		t.Helper()
+		owners := d.Get("owner").([]any)
+		if want == nil {
+			if len(owners) != 0 {
+				t.Errorf("owner = %v, want empty", owners)
+			}
+			return
+		}
+		if len(owners) != 1 {
+			t.Fatalf("owner = %v, want one owner", owners)
+		}
+		got := owners[0].(map[string]any)
+		for key, value := range want {
+			if got[key] != value {
+				t.Errorf("owner.%s = %v, want %v", key, got[key], value)
+			}
+		}
+	}
+	checkOwner(map[string]any{"id": 42, "login": "app-publisher", "node_id": "publisher-node", "type": "Organization", "html_url": "https://github.com/app-publisher", "slug": ""})
+	owner = `{"id":99,"slug":"publisher-enterprise","type":"Enterprise","created_at":"2026-01-01T00:00:00Z","updated_at":"2026-02-01T00:00:00Z","website_url":"https://example.com"}`
+
 	// Refresh replaces removed permissions and subscriptions and picks up changed timestamps.
 	metadata = `"permissions":{"issues":"write","future_permission":"write"},"events":["issues"],"created_at":"2026-01-02T03:04:05-05:00","updated_at":"2026-02-03T04:05:06Z"`
 	if diags := resourceGithubEnterpriseOrganizationAppInstallationRead(t.Context(), d, meta); diags.HasError() {
@@ -182,12 +216,19 @@ func TestResourceGithubEnterpriseOrganizationAppInstallationMetadata(t *testing.
 	}
 	checkMetadata(map[string]any{"issues": "write", "future_permission": "write"}, []any{"issues"}, "2026-01-02T03:04:05-05:00", "2026-02-03T04:05:06Z")
 
+	checkOwner(map[string]any{"id": 99, "login": "", "node_id": "", "type": "Enterprise", "slug": "publisher-enterprise", "html_url": "", "created_at": "2026-01-01T00:00:00Z", "updated_at": "2026-02-01T00:00:00Z", "website_url": "https://example.com"})
+	owner = `null`
+
 	// Missing metadata clears old values without inventing zero-date timestamps.
 	metadata = `"permissions":null,"events":null,"created_at":null,"updated_at":null`
 	if diags := resourceGithubEnterpriseOrganizationAppInstallationRead(t.Context(), d, meta); diags.HasError() {
 		t.Fatalf("read diagnostics: %v", diags)
 	}
 	checkMetadata(map[string]any{}, nil, "", "")
+	checkOwner(nil)
+	if appRequests != 3 {
+		t.Errorf("app requests = %d, want 3", appRequests)
+	}
 	if requests != 3 {
 		t.Errorf("API requests = %d, want 3 (one per create/read)", requests)
 	}
@@ -496,5 +537,67 @@ func TestEnterpriseAppInstallationRepositories(t *testing.T) {
 	got := enterpriseAppInstallationRepositories(d)
 	if !slices.Equal(got, []string{"MixedCase"}) {
 		t.Errorf("enterpriseAppInstallationRepositories() = %v, want [MixedCase]", got)
+	}
+}
+
+func TestEnterpriseAppInstallationOwner(t *testing.T) {
+	t.Parallel()
+	for _, tc := range []struct {
+		name      string
+		slug      string
+		status    int
+		body      string
+		wantError bool
+		wantOwner bool
+	}{
+		{name: "qualified slug", slug: "publisher/example-app", status: http.StatusOK, body: `{"owner":{"id":42,"login":"publisher","type":"User"}}`, wantOwner: true},
+		{name: "missing slug"},
+		{name: "omitted owner", slug: "example-app", status: http.StatusOK, body: `{}`},
+		{name: "not found", slug: "example-app", status: http.StatusNotFound, wantError: true},
+		{name: "forbidden", slug: "example-app", status: http.StatusForbidden, wantError: true},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			requests := 0
+			server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, req *http.Request) {
+				requests++
+				if req.URL.Path != "/apps/example-app" {
+					t.Errorf("path = %q", req.URL.Path)
+				}
+				w.WriteHeader(tc.status)
+				mustWrite(w, tc.body)
+			}))
+			defer server.Close()
+			d := schema.TestResourceDataRaw(t, resourceGithubEnterpriseOrganizationAppInstallation().Schema, map[string]any{})
+			if err := d.Set("owner", []any{map[string]any{"id": 1, "login": "old-owner"}}); err != nil {
+				t.Fatal(err)
+			}
+			d.SetId("example:example-org:Iv1.example")
+			err := setEnterpriseAppInstallationOwner(t.Context(), d, mustCreateTestGitHubClient(t, server.URL+"/"), tc.slug)
+			if (err != nil) != tc.wantError {
+				t.Fatalf("error = %v, want error %t", err, tc.wantError)
+			}
+			if d.Id() == "" {
+				t.Fatal("owner lookup cleared installation ID")
+			}
+			if tc.wantError {
+				return
+			}
+			owners := d.Get("owner").([]any)
+			if tc.wantOwner {
+				if len(owners) != 1 || owners[0].(map[string]any)["login"] != "publisher" {
+					t.Errorf("owner = %v", owners)
+				}
+			} else if len(owners) != 0 {
+				t.Errorf("owner = %v, want empty", owners)
+			}
+			wantRequests := 1
+			if tc.slug == "" {
+				wantRequests = 0
+			}
+			if requests != wantRequests {
+				t.Errorf("requests = %d, want %d", requests, wantRequests)
+			}
+		})
 	}
 }

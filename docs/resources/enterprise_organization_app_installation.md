@@ -16,6 +16,8 @@ This resource is only available on GitHub Enterprise Cloud, and on GitHub Enterp
 
 -> `selected_repositories` must be non-empty when `repository_selection` is `selected`, and must be empty when it is `all` or `none`. Use `none` only when the app requests no repository permissions. GitHub reports these installations as `selected` with an empty repository list; the provider normalizes that response back to `none`.
 
+The computed `owner` block describes the app publisher, using the same fields as the `github_app` data source. It is fetched from `GET /apps/{app_slug}` during creation and refresh, adding one API request. The configured credentials must be able to read the app; a failed lookup returns an error. If GitHub omits the app slug or owner, the block is empty. The installation target is the organization specified by `organization`.
+
 ## Example Usage
 
 ```terraform
@@ -68,8 +70,42 @@ resource "github_enterprise_organization_app_installation" "organization_runner"
 - `events` (Set of String) The events the GitHub App installation subscribes to.
 - `id` (String) The ID of this resource.
 - `installation_id` (Number) The numeric ID of the app installation.
+- `owner` (List of Object) The user, organization, or enterprise that owns the app. Fields that do not apply to the owner type are empty. (see [below for nested schema](#nestedatt--owner))
 - `permissions` (Map of String) The permissions granted to the GitHub App installation, keyed by permission name with access levels as values. Includes permission names not yet known to the provider's GitHub client.
 - `updated_at` (String) The time the GitHub App installation was last updated, in RFC 3339 format.
+
+<a id="nestedatt--owner"></a>
+### Nested Schema for `owner`
+
+Read-Only:
+
+- `avatar_url` (String)
+- `created_at` (String)
+- `description` (String)
+- `email` (String)
+- `events_url` (String)
+- `followers_url` (String)
+- `following_url` (String)
+- `gists_url` (String)
+- `gravatar_id` (String)
+- `html_url` (String)
+- `id` (Number)
+- `login` (String)
+- `name` (String)
+- `node_id` (String)
+- `organizations_url` (String)
+- `received_events_url` (String)
+- `repos_url` (String)
+- `site_admin` (Boolean)
+- `slug` (String)
+- `starred_at` (String)
+- `starred_url` (String)
+- `subscriptions_url` (String)
+- `type` (String)
+- `updated_at` (String)
+- `url` (String)
+- `user_view_type` (String)
+- `website_url` (String)
 
 ## Import
 

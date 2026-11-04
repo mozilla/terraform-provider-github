@@ -5,7 +5,9 @@ import (
 	"errors"
 	"fmt"
 	"net/http"
+	"net/url"
 	"slices"
+	"strings"
 	"time"
 
 	"github.com/google/go-github/v92/github"
@@ -102,6 +104,7 @@ func resourceGithubEnterpriseOrganizationAppInstallation() *schema.Resource {
 				Computed:    true,
 				Description: "The numeric ID of the app installation.",
 			},
+			"owner": githubAppOwnerSchema(),
 			"permissions": {
 				Type:        schema.TypeMap,
 				Computed:    true,
@@ -233,7 +236,7 @@ func resourceGithubEnterpriseOrganizationAppInstallationCreate(ctx context.Conte
 		return diag.FromErr(err)
 	}
 
-	return nil
+	return diag.FromErr(setEnterpriseAppInstallationOwner(ctx, d, client, installation.GetAppSlug()))
 }
 
 func resourceGithubEnterpriseOrganizationAppInstallationRead(ctx context.Context, d *schema.ResourceData, m any) diag.Diagnostics {
@@ -303,7 +306,7 @@ func resourceGithubEnterpriseOrganizationAppInstallationRead(ctx context.Context
 		}
 	}
 
-	return nil
+	return diag.FromErr(setEnterpriseAppInstallationOwner(ctx, d, client, installation.GetAppSlug()))
 }
 
 func resourceGithubEnterpriseOrganizationAppInstallationUpdate(ctx context.Context, d *schema.ResourceData, m any) diag.Diagnostics {
@@ -573,4 +576,26 @@ func setEnterpriseAppInstallationMetadata(d *schema.ResourceData, installation *
 	}
 
 	return nil
+}
+
+// setEnterpriseAppInstallationOwner fetches the app owner, rather than the installation's target account.
+func setEnterpriseAppInstallationOwner(ctx context.Context, d *schema.ResourceData, client *github.Client, slug string) error {
+	if slug == "" {
+		return d.Set("owner", []any{})
+	}
+	// Enterprise installation responses can qualify the app slug with its owner.
+	if index := strings.LastIndex(slug, "/"); index >= 0 {
+		slug = slug[index+1:]
+	}
+	req, err := client.NewRequest(ctx, http.MethodGet, "apps/"+url.PathEscape(slug), nil)
+	if err != nil {
+		return err
+	}
+	var app struct {
+		Owner *githubAppOwner `json:"owner"`
+	}
+	if _, err := client.Do(req, &app); err != nil {
+		return fmt.Errorf("could not read owner of GitHub App %q: %w", slug, err)
+	}
+	return d.Set("owner", flattenGithubAppOwner(app.Owner))
 }
