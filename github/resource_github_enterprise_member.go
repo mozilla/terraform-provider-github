@@ -3,11 +3,15 @@ package github
 import (
 	"context"
 	"fmt"
+	"net/http"
 	"strings"
+
+	gh "github.com/google/go-github/v92/github"
 
 	"github.com/hashicorp/terraform-plugin-log/tflog"
 	"github.com/hashicorp/terraform-plugin-sdk/v2/diag"
 	"github.com/hashicorp/terraform-plugin-sdk/v2/helper/schema"
+	"github.com/hashicorp/terraform-plugin-sdk/v2/helper/validation"
 	"github.com/shurcooL/githubv4"
 )
 
@@ -29,6 +33,7 @@ func resourceGithubEnterpriseMember() *schema.Resource {
 		ReadContext:   resourceGithubEnterpriseMemberRead,
 		UpdateContext: resourceGithubEnterpriseMemberUpdate,
 		DeleteContext: resourceGithubEnterpriseMemberDelete,
+		CustomizeDiff: resourceGithubEnterpriseMemberDiff,
 		Importer: &schema.ResourceImporter{
 			StateContext: schema.ImportStatePassthroughContext,
 		},
@@ -40,12 +45,20 @@ func resourceGithubEnterpriseMember() *schema.Resource {
 				ForceNew:    true,
 				Description: "The slug of the enterprise to invite the user to.",
 			},
+			"user_id": {
+				Type: schema.TypeInt, Optional: true, Computed: true, ForceNew: true,
+				ValidateDiagFunc: validation.ToDiagFunc(validation.IntAtLeast(1)),
+				ExactlyOneOf:     []string{"username", "user_id"},
+				Description:      "The immutable numeric GitHub account ID. Specify this instead of username to preserve membership across renames. Changing it replaces the membership.",
+			},
 			"username": {
 				Type:             schema.TypeString,
-				Required:         true,
-				ForceNew:         true,
+				Optional:         true,
+				Computed:         true,
 				DiffSuppressFunc: caseInsensitive(),
-				Description:      "The login of the user to invite to the enterprise.",
+				ExactlyOneOf:     []string{"username", "user_id"},
+				ValidateDiagFunc: validation.ToDiagFunc(validation.StringIsNotWhiteSpace),
+				Description:      "The login of the user to invite to the enterprise. When user_id is specified, this is resolved from that account. Username-only configurations are supported; switching to a different account replaces its membership.",
 			},
 			"reinvite": {
 				Type:        schema.TypeBool,
@@ -65,6 +78,48 @@ func resourceGithubEnterpriseMember() *schema.Resource {
 			},
 		},
 	}
+}
+
+func resourceGithubEnterpriseMemberDiff(ctx context.Context, d *schema.ResourceDiff, meta any) error {
+	if d.Id() == "" || !d.NewValueKnown("username") || !d.HasChange("username") {
+		return nil
+	}
+	user, _, err := meta.(*Owner).v3client.Users.Get(ctx, d.Get("username").(string))
+	if err != nil {
+		return fmt.Errorf("resolve desired enterprise member username (use user_id for a renamed account): %w", err)
+	}
+	oldID, _ := d.GetChange("user_id")
+	if oldID.(int) != 0 && int64(oldID.(int)) == user.GetID() {
+		return nil
+	}
+	if err := d.SetNewComputed("user_id"); err != nil {
+		return err
+	}
+	return d.ForceNew("username")
+}
+
+// Resolve the stored account before searching membership so a rename cannot retarget a
+// resource to a different account that has claimed its old username.
+func enterpriseMemberUser(ctx context.Context, owner *Owner, userID int, username string) (*gh.User, error) {
+	var user *gh.User
+	var response *gh.Response
+	var err error
+	if userID != 0 {
+		user, response, err = owner.v3client.Users.GetByID(ctx, int64(userID))
+	} else {
+		user, response, err = owner.v3client.Users.Get(ctx, username)
+	}
+	if response != nil && response.StatusCode == http.StatusNotFound {
+		return nil, nil
+	}
+	return user, err
+}
+
+func setEnterpriseMemberUser(d *schema.ResourceData, user *gh.User) error {
+	if err := d.Set("user_id", user.GetID()); err != nil {
+		return err
+	}
+	return d.Set("username", user.GetLogin())
 }
 
 // enterpriseMemberState is the current state of a user with respect to an enterprise,
@@ -196,10 +251,25 @@ func resourceGithubEnterpriseMemberCreate(ctx context.Context, d *schema.Resourc
 
 	enterpriseSlug := d.Get("enterprise_slug").(string)
 	username := d.Get("username").(string)
+	user, err := enterpriseMemberUser(ctx, owner, d.Get("user_id").(int), username)
+	if err != nil {
+		return diag.FromErr(err)
+	}
+	if user == nil {
+		return diag.Errorf("cannot resolve GitHub account for enterprise membership")
+	}
+	username = user.GetLogin()
+	if err := setEnterpriseMemberUser(d, user); err != nil {
+		return diag.FromErr(err)
+	}
 
 	state, err := getEnterpriseMemberState(ctx, client, owner.maxPerPage, enterpriseSlug, username)
 	if err != nil {
 		return diag.FromErr(err)
+	}
+
+	if state.status == enterpriseMemberStatusActive && state.userID != user.GetNodeID() {
+		return diag.Errorf("enterprise membership resolved to a different GitHub account; retry after the account rename has propagated")
 	}
 
 	switch state.status {
@@ -258,6 +328,19 @@ func resourceGithubEnterpriseMemberRead(ctx context.Context, d *schema.ResourceD
 		return diag.FromErr(err)
 	}
 
+	user, err := enterpriseMemberUser(ctx, owner, d.Get("user_id").(int), username)
+	if err != nil {
+		return diag.FromErr(err)
+	}
+	if user == nil {
+		d.SetId("")
+		return nil
+	}
+	username = user.GetLogin()
+	if err := setEnterpriseMemberUser(d, user); err != nil {
+		return diag.FromErr(err)
+	}
+
 	state, err := getEnterpriseMemberState(ctx, client, owner.maxPerPage, enterpriseSlug, username)
 	if err != nil {
 		if isEnterpriseNotFoundError(err) {
@@ -269,6 +352,10 @@ func resourceGithubEnterpriseMemberRead(ctx context.Context, d *schema.ResourceD
 			return nil
 		}
 		return diag.FromErr(err)
+	}
+
+	if state.status == enterpriseMemberStatusActive && state.userID != user.GetNodeID() {
+		return diag.Errorf("enterprise membership resolved to a different GitHub account; retry after the account rename has propagated")
 	}
 
 	if state.status == "" {
@@ -325,6 +412,14 @@ func resourceGithubEnterpriseMemberDelete(ctx context.Context, d *schema.Resourc
 
 	enterpriseSlug := d.Get("enterprise_slug").(string)
 	username := d.Get("username").(string)
+	user, err := enterpriseMemberUser(ctx, owner, d.Get("user_id").(int), username)
+	if err != nil {
+		return diag.FromErr(err)
+	}
+	if user == nil {
+		return nil
+	}
+	username = user.GetLogin()
 
 	// Look up the current state rather than trusting it, because the invitation may have been
 	// accepted, cancelled or expired since the last refresh.
@@ -357,7 +452,7 @@ func resourceGithubEnterpriseMemberDelete(ctx context.Context, d *schema.Resourc
 			return diag.FromErr(err)
 		}
 	case enterpriseMemberStatusActive:
-		if state.userID == "" {
+		if state.userID == "" || state.userID != user.GetNodeID() {
 			return diag.FromErr(fmt.Errorf("cannot remove %q from enterprise %q: the underlying user account could not be resolved", username, enterpriseSlug))
 		}
 
