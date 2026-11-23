@@ -65,13 +65,15 @@ resource "github_enterprise_organization_app_installation" "organization_runner"
 
 ### Read-Only
 
+- `app_permissions` (Map of String) The permissions currently declared on the GitHub App registration, keyed by permission name with access levels as values.
 - `app_slug` (String) The slug of the installed app.
 - `created_at` (String) The time the GitHub App installation was created, in RFC 3339 format.
 - `events` (Set of String) The events the GitHub App installation subscribes to.
 - `id` (String) The ID of this resource.
 - `installation_id` (Number) The numeric ID of the app installation.
+- `installation_permissions` (Map of String) The permissions currently granted to the GitHub App installation, keyed by permission name with access levels as values.
 - `owner` (List of Object) The user, organization, or enterprise that owns the app. Fields that do not apply to the owner type are empty. (see [below for nested schema](#nestedatt--owner))
-- `permissions` (Map of String) The permissions granted to the GitHub App installation, keyed by permission name with access levels as values. Includes permission names not yet known to the provider's GitHub client.
+- `permissions` (Map of String, Deprecated) Deprecated alias for `installation_permissions`. Use `installation_permissions` instead.
 - `updated_at` (String) The time the GitHub App installation was last updated, in RFC 3339 format.
 
 <a id="nestedatt--owner"></a>

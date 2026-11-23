@@ -127,12 +127,13 @@ func TestResourceGithubEnterpriseOrganizationAppInstallationMetadata(t *testing.
 	mux := http.NewServeMux()
 	appRequests := 0
 	owner := `{"id":42,"login":"app-publisher","node_id":"publisher-node","type":"Organization","html_url":"https://github.com/app-publisher"}`
+	appPermissions := `"permissions":{"contents":"write","future_permission":"write"}`
 	mux.HandleFunc("/apps/example-app", func(w http.ResponseWriter, req *http.Request) {
 		appRequests++
 		if req.Method != http.MethodGet {
 			t.Errorf("app request method = %s, want GET", req.Method)
 		}
-		mustWrite(w, `{"owner":`+owner+`}`)
+		mustWrite(w, `{"owner":`+owner+`,`+appPermissions+`}`)
 	})
 	mux.HandleFunc("/enterprises/example/apps/organizations/example-org/installations", func(w http.ResponseWriter, req *http.Request) {
 		requests++
@@ -160,10 +161,16 @@ func TestResourceGithubEnterpriseOrganizationAppInstallationMetadata(t *testing.
 	})
 	meta := &Owner{v3client: mustCreateTestGitHubClient(t, server.URL+"/"), maxPerPage: 100}
 
-	checkMetadata := func(permissions map[string]any, events []any, createdAt, updatedAt string) {
+	checkMetadata := func(installationPermissions, appPermissions map[string]any, events []any, createdAt, updatedAt string) {
 		t.Helper()
-		if got := d.Get("permissions"); !reflect.DeepEqual(got, permissions) {
-			t.Errorf("permissions = %v, want %v", got, permissions)
+		for key, want := range map[string]map[string]any{
+			"permissions":              installationPermissions,
+			"installation_permissions": installationPermissions,
+			"app_permissions":          appPermissions,
+		} {
+			if got := d.Get(key); !reflect.DeepEqual(got, want) {
+				t.Errorf("%s = %v, want %v", key, got, want)
+			}
 		}
 		gotEvents := d.Get("events").(*schema.Set)
 		if gotEvents.Len() != len(events) {
@@ -185,6 +192,7 @@ func TestResourceGithubEnterpriseOrganizationAppInstallationMetadata(t *testing.
 		t.Fatalf("create diagnostics: %v", diags)
 	}
 	checkMetadata(map[string]any{"contents": "read", "enterprise_organization_installations": "write", "repository_creation": "write", "installation_repositories": "write", "future_permission": "read"},
+		map[string]any{"contents": "write", "future_permission": "write"},
 		[]any{"push", "pull_request"}, "2026-01-02T03:04:05-05:00", "2026-01-03T04:05:06Z")
 
 	checkOwner := func(want map[string]any) {
@@ -211,20 +219,23 @@ func TestResourceGithubEnterpriseOrganizationAppInstallationMetadata(t *testing.
 
 	// Refresh replaces removed permissions and subscriptions and picks up changed timestamps.
 	metadata = `"permissions":{"issues":"write","future_permission":"write"},"events":["issues"],"created_at":"2026-01-02T03:04:05-05:00","updated_at":"2026-02-03T04:05:06Z"`
+	appPermissions = `"permissions":{"issues":"write","contents":"write"}`
 	if diags := resourceGithubEnterpriseOrganizationAppInstallationRead(t.Context(), d, meta); diags.HasError() {
 		t.Fatalf("read diagnostics: %v", diags)
 	}
-	checkMetadata(map[string]any{"issues": "write", "future_permission": "write"}, []any{"issues"}, "2026-01-02T03:04:05-05:00", "2026-02-03T04:05:06Z")
+	checkMetadata(map[string]any{"issues": "write", "future_permission": "write"}, map[string]any{"issues": "write", "contents": "write"},
+		[]any{"issues"}, "2026-01-02T03:04:05-05:00", "2026-02-03T04:05:06Z")
 
 	checkOwner(map[string]any{"id": 99, "login": "", "node_id": "", "type": "Enterprise", "slug": "publisher-enterprise", "html_url": "", "created_at": "2026-01-01T00:00:00Z", "updated_at": "2026-02-01T00:00:00Z", "website_url": "https://example.com"})
 	owner = `null`
 
 	// Missing metadata clears old values without inventing zero-date timestamps.
 	metadata = `"permissions":null,"events":null,"created_at":null,"updated_at":null`
+	appPermissions = `"permissions":null`
 	if diags := resourceGithubEnterpriseOrganizationAppInstallationRead(t.Context(), d, meta); diags.HasError() {
 		t.Fatalf("read diagnostics: %v", diags)
 	}
-	checkMetadata(map[string]any{}, nil, "", "")
+	checkMetadata(map[string]any{}, map[string]any{}, nil, "", "")
 	checkOwner(nil)
 	if appRequests != 3 {
 		t.Errorf("app requests = %d, want 3", appRequests)
@@ -540,7 +551,7 @@ func TestEnterpriseAppInstallationRepositories(t *testing.T) {
 	}
 }
 
-func TestEnterpriseAppInstallationOwner(t *testing.T) {
+func TestEnterpriseAppRegistrationMetadata(t *testing.T) {
 	t.Parallel()
 	for _, tc := range []struct {
 		name      string
@@ -572,8 +583,11 @@ func TestEnterpriseAppInstallationOwner(t *testing.T) {
 			if err := d.Set("owner", []any{map[string]any{"id": 1, "login": "old-owner"}}); err != nil {
 				t.Fatal(err)
 			}
+			if err := d.Set("app_permissions", map[string]string{"contents": "read"}); err != nil {
+				t.Fatal(err)
+			}
 			d.SetId("example:example-org:Iv1.example")
-			err := setEnterpriseAppInstallationOwner(t.Context(), d, mustCreateTestGitHubClient(t, server.URL+"/"), tc.slug)
+			err := setEnterpriseAppRegistrationMetadata(t.Context(), d, mustCreateTestGitHubClient(t, server.URL+"/"), tc.slug)
 			if (err != nil) != tc.wantError {
 				t.Fatalf("error = %v, want error %t", err, tc.wantError)
 			}
@@ -582,6 +596,9 @@ func TestEnterpriseAppInstallationOwner(t *testing.T) {
 			}
 			if tc.wantError {
 				return
+			}
+			if got := d.Get("app_permissions").(map[string]any); len(got) != 0 {
+				t.Errorf("app_permissions = %v, want empty", got)
 			}
 			owners := d.Get("owner").([]any)
 			if tc.wantOwner {

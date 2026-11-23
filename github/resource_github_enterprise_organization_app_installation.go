@@ -109,7 +109,20 @@ func resourceGithubEnterpriseOrganizationAppInstallation() *schema.Resource {
 				Type:        schema.TypeMap,
 				Computed:    true,
 				Elem:        &schema.Schema{Type: schema.TypeString},
-				Description: "The permissions granted to the GitHub App installation, keyed by permission name with access levels as values. Includes permission names not yet known to the provider's GitHub client.",
+				Description: "Deprecated alias for `installation_permissions`. Use `installation_permissions` instead.",
+				Deprecated:  "Use `installation_permissions` instead.",
+			},
+			"installation_permissions": {
+				Type:        schema.TypeMap,
+				Computed:    true,
+				Elem:        &schema.Schema{Type: schema.TypeString},
+				Description: "The permissions currently granted to the GitHub App installation, keyed by permission name with access levels as values.",
+			},
+			"app_permissions": {
+				Type:        schema.TypeMap,
+				Computed:    true,
+				Elem:        &schema.Schema{Type: schema.TypeString},
+				Description: "The permissions currently declared on the GitHub App registration, keyed by permission name with access levels as values.",
 			},
 			"events": {
 				Type:        schema.TypeSet,
@@ -236,7 +249,7 @@ func resourceGithubEnterpriseOrganizationAppInstallationCreate(ctx context.Conte
 		return diag.FromErr(err)
 	}
 
-	return diag.FromErr(setEnterpriseAppInstallationOwner(ctx, d, client, installation.GetAppSlug()))
+	return diag.FromErr(setEnterpriseAppRegistrationMetadata(ctx, d, client, installation.GetAppSlug()))
 }
 
 func resourceGithubEnterpriseOrganizationAppInstallationRead(ctx context.Context, d *schema.ResourceData, m any) diag.Diagnostics {
@@ -306,7 +319,7 @@ func resourceGithubEnterpriseOrganizationAppInstallationRead(ctx context.Context
 		}
 	}
 
-	return diag.FromErr(setEnterpriseAppInstallationOwner(ctx, d, client, installation.GetAppSlug()))
+	return diag.FromErr(setEnterpriseAppRegistrationMetadata(ctx, d, client, installation.GetAppSlug()))
 }
 
 func resourceGithubEnterpriseOrganizationAppInstallationUpdate(ctx context.Context, d *schema.ResourceData, m any) diag.Diagnostics {
@@ -565,10 +578,11 @@ func setEnterpriseAppInstallationMetadata(d *schema.ResourceData, installation *
 	}
 
 	for key, value := range map[string]any{
-		"permissions": installation.Permissions,
-		"events":      installation.Events,
-		"created_at":  createdAt,
-		"updated_at":  updatedAt,
+		"permissions":              installation.Permissions,
+		"installation_permissions": installation.Permissions,
+		"events":                   installation.Events,
+		"created_at":               createdAt,
+		"updated_at":               updatedAt,
 	} {
 		if err := d.Set(key, value); err != nil {
 			return err
@@ -578,24 +592,27 @@ func setEnterpriseAppInstallationMetadata(d *schema.ResourceData, installation *
 	return nil
 }
 
-// setEnterpriseAppInstallationOwner fetches the app owner, rather than the installation's target account.
-func setEnterpriseAppInstallationOwner(ctx context.Context, d *schema.ResourceData, client *github.Client, slug string) error {
-	if slug == "" {
-		return d.Set("owner", []any{})
-	}
+// setEnterpriseAppRegistrationMetadata fetches the app publisher and declared permissions.
+func setEnterpriseAppRegistrationMetadata(ctx context.Context, d *schema.ResourceData, client *github.Client, slug string) error {
 	// Enterprise installation responses can qualify the app slug with its owner.
 	if index := strings.LastIndex(slug, "/"); index >= 0 {
 		slug = slug[index+1:]
 	}
-	req, err := client.NewRequest(ctx, http.MethodGet, "apps/"+url.PathEscape(slug), nil)
-	if err != nil {
+	var app struct {
+		Owner       *githubAppOwner   `json:"owner"`
+		Permissions map[string]string `json:"permissions"`
+	}
+	if slug != "" {
+		req, err := client.NewRequest(ctx, http.MethodGet, "apps/"+url.PathEscape(slug), nil)
+		if err != nil {
+			return err
+		}
+		if _, err := client.Do(req, &app); err != nil {
+			return fmt.Errorf("could not read registration of GitHub App %q: %w", slug, err)
+		}
+	}
+	if err := d.Set("owner", flattenGithubAppOwner(app.Owner)); err != nil {
 		return err
 	}
-	var app struct {
-		Owner *githubAppOwner `json:"owner"`
-	}
-	if _, err := client.Do(req, &app); err != nil {
-		return fmt.Errorf("could not read owner of GitHub App %q: %w", slug, err)
-	}
-	return d.Set("owner", flattenGithubAppOwner(app.Owner))
+	return d.Set("app_permissions", app.Permissions)
 }
