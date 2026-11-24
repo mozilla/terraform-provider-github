@@ -33,4 +33,16 @@ func TestDataSourceGithubAppPermissionsRead(t *testing.T) {
 			t.Errorf("permission_scopes[%q] = %v, want %q", permission, got[permission], scope)
 		}
 	}
+
+	for permission, scope := range map[string]string{
+		"agent_tasks":                 "repository",
+		"enterprise_custom_org_roles": "enterprise",
+		"enterprise_people":           "enterprise",
+		"merge_queues":                "repository",
+		"user_events":                 "user",
+	} {
+		if got[permission] != scope {
+			t.Errorf("permission_scopes[%q] = %v, want %q", permission, got[permission], scope)
+		}
+	}
 }

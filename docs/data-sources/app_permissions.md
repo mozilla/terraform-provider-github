@@ -2,12 +2,12 @@
 page_title: "github_app_permissions (Data Source) - GitHub"
 subcategory: ""
 description: |-
-  Look up GitHub App permission scopes using the GitHub Enterprise Cloud catalog bundled with the provider. The data source makes no GitHub API requests.
+  Look up GitHub App permission scopes using the GitHub Enterprise Cloud catalog and supplemental entries bundled with the provider. The data source makes no GitHub API requests.
 ---
 
 # github_app_permissions (Data Source)
 
-Look up GitHub App permission scopes using the GitHub Enterprise Cloud catalog bundled with the provider. The data source makes no GitHub API requests.
+Look up GitHub App permission scopes using the GitHub Enterprise Cloud catalog and supplemental entries bundled with the provider. The data source makes no GitHub API requests.
 
 ## Example Usage
 

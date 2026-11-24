@@ -11,7 +11,7 @@ import (
 
 func dataSourceGithubAppPermissions() *schema.Resource {
 	return &schema.Resource{
-		Description: "Look up GitHub App permission scopes using the GitHub Enterprise Cloud catalog bundled with the provider. The data source makes no GitHub API requests.",
+		Description: "Look up GitHub App permission scopes using the GitHub Enterprise Cloud catalog and supplemental entries bundled with the provider. The data source makes no GitHub API requests.",
 		ReadContext: dataSourceGithubAppPermissionsRead,
 		Schema: map[string]*schema.Schema{
 			"permission_scopes": {
