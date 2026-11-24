@@ -289,6 +289,7 @@ func NewProvider(version, commit string) func() *schema.Provider {
 				"github_actions_secrets":                                                dataSourceGithubActionsSecrets(),
 				"github_actions_variables":                                              dataSourceGithubActionsVariables(),
 				"github_app":                                                            dataSourceGithubApp(),
+				"github_app_permissions":                                                dataSourceGithubAppPermissions(),
 				"github_app_token":                                                      dataSourceGithubAppToken(),
 				"github_branch":                                                         dataSourceGithubBranch(),
 				"github_branch_protection_rules":                                        dataSourceGithubBranchProtectionRules(),

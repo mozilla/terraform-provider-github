@@ -1,6 +1,8 @@
 // Package githubapppermissions looks up the scope of GitHub App permission keys.
 package githubapppermissions
 
+import "maps"
+
 //go:generate go run generate.go
 
 // Scope identifies the account or resource a permission applies to.
@@ -17,4 +19,9 @@ const (
 func ScopeFor(permission string) (Scope, bool) {
 	scope, ok := permissionScopes[permission]
 	return scope, ok
+}
+
+// Scopes returns a copy of the bundled permission-to-scope mapping.
+func Scopes() map[string]Scope {
+	return maps.Clone(permissionScopes)
 }
