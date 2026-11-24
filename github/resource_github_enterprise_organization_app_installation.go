@@ -249,7 +249,7 @@ func resourceGithubEnterpriseOrganizationAppInstallationCreate(ctx context.Conte
 		return diag.FromErr(err)
 	}
 
-	return diag.FromErr(setEnterpriseAppRegistrationMetadata(ctx, d, client, installation.GetAppSlug()))
+	return diag.FromErr(setEnterpriseAppRegistrationMetadata(ctx, d, client, installation.GetAppSlug(), clientID))
 }
 
 func resourceGithubEnterpriseOrganizationAppInstallationRead(ctx context.Context, d *schema.ResourceData, m any) diag.Diagnostics {
@@ -319,7 +319,7 @@ func resourceGithubEnterpriseOrganizationAppInstallationRead(ctx context.Context
 		}
 	}
 
-	return diag.FromErr(setEnterpriseAppRegistrationMetadata(ctx, d, client, installation.GetAppSlug()))
+	return diag.FromErr(setEnterpriseAppRegistrationMetadata(ctx, d, client, installation.GetAppSlug(), clientID))
 }
 
 func resourceGithubEnterpriseOrganizationAppInstallationUpdate(ctx context.Context, d *schema.ResourceData, m any) diag.Diagnostics {
@@ -593,7 +593,7 @@ func setEnterpriseAppInstallationMetadata(d *schema.ResourceData, installation *
 }
 
 // setEnterpriseAppRegistrationMetadata fetches the app publisher and declared permissions.
-func setEnterpriseAppRegistrationMetadata(ctx context.Context, d *schema.ResourceData, client *github.Client, slug string) error {
+func setEnterpriseAppRegistrationMetadata(ctx context.Context, d *schema.ResourceData, client *github.Client, slug, clientID string) error {
 	// Enterprise installation responses can qualify the app slug with its owner.
 	if index := strings.LastIndex(slug, "/"); index >= 0 {
 		slug = slug[index+1:]
@@ -601,14 +601,35 @@ func setEnterpriseAppRegistrationMetadata(ctx context.Context, d *schema.Resourc
 	var app struct {
 		Owner       *githubAppOwner   `json:"owner"`
 		Permissions map[string]string `json:"permissions"`
+		ClientID    string            `json:"client_id"`
 	}
 	if slug != "" {
 		req, err := client.NewRequest(ctx, http.MethodGet, "apps/"+url.PathEscape(slug), nil)
 		if err != nil {
 			return err
 		}
-		if _, err := client.Do(req, &app); err != nil {
-			return fmt.Errorf("could not read registration of GitHub App %q: %w", slug, err)
+		if _, lookupErr := client.Do(req, &app); lookupErr != nil {
+			apiErr, ok := errors.AsType[*github.ErrorResponse](lookupErr)
+			if !ok || apiErr.Response == nil || apiErr.Response.StatusCode != http.StatusForbidden ||
+				!strings.Contains(strings.ToLower(apiErr.Message), "ip allow list") {
+				return fmt.Errorf("could not read registration of GitHub App %q: %w", slug, lookupErr)
+			}
+
+			// GitHub exposes public app registrations without authentication. Use a fresh transport
+			// so the enterprise token cannot be attached to the public request.
+			publicClient, err := github.NewClient(github.WithTimeout(client.Client().Timeout))
+			if err != nil {
+				return fmt.Errorf("could not prepare public registration lookup for GitHub App %q: %w", slug, err)
+			}
+			publicReq := req.Clone(ctx)
+			publicReq.URL.User = nil
+			publicReq.Header.Del("Authorization")
+			if _, err := publicClient.Do(publicReq, &app); err != nil {
+				return fmt.Errorf("could not read registration of GitHub App %q: %w; public lookup failed: %w", slug, lookupErr, err)
+			}
+			if clientID == "" || app.ClientID != clientID {
+				return fmt.Errorf("public registration of GitHub App %q returned client ID %q, expected %q", slug, app.ClientID, clientID)
+			}
 		}
 	}
 	if err := d.Set("owner", flattenGithubAppOwner(app.Owner)); err != nil {

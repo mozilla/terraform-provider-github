@@ -16,7 +16,7 @@ This resource is only available on GitHub Enterprise Cloud, and on GitHub Enterp
 
 -> `selected_repositories` must be non-empty when `repository_selection` is `selected`, and must be empty when it is `all` or `none`. Use `none` only when the app requests no repository permissions. GitHub reports these installations as `selected` with an empty repository list; the provider normalizes that response back to `none`.
 
-The computed `owner` block describes the app publisher, using the same fields as the `github_app` data source. It is fetched from `GET /apps/{app_slug}` during creation and refresh, adding one API request. The configured credentials must be able to read the app; a failed lookup returns an error. If GitHub omits the app slug or owner, the block is empty. The installation target is the organization specified by `organization`.
+During creation and refresh, the provider reads `owner` and `app_permissions` from `GET /apps/{app_slug}`. If GitHub returns an IP allow-list error, the provider retries without authentication and uses the public registration only if its client ID matches the installation. A failed lookup returns an error. If GitHub omits the app slug or owner, the `owner` block is empty. The block describes the app publisher using the same fields as the `github_app` data source.
 
 ## Example Usage
 

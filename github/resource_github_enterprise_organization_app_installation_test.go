@@ -3,13 +3,16 @@ package github
 import (
 	"encoding/json"
 	"fmt"
+	"maps"
 	"net/http"
 	"net/http/httptest"
 	"reflect"
 	"regexp"
 	"slices"
+	"strings"
 	"testing"
 
+	"github.com/google/go-github/v92/github"
 	"github.com/hashicorp/terraform-plugin-sdk/v2/helper/schema"
 	"github.com/hashicorp/terraform-plugin-testing/helper/resource"
 	"github.com/hashicorp/terraform-plugin-testing/knownvalue"
@@ -553,30 +556,71 @@ func TestEnterpriseAppInstallationRepositories(t *testing.T) {
 
 func TestEnterpriseAppRegistrationMetadata(t *testing.T) {
 	t.Parallel()
+	const (
+		clientID            = "Iv1.example"
+		ipAllowListResponse = `{"message":"Although you appear to have the correct authorization credentials, the bitrise-io organization has an IP allow list enabled, and your IP address is not permitted to access this resource."}`
+	)
 	for _, tc := range []struct {
-		name      string
-		slug      string
-		status    int
-		body      string
-		wantError bool
-		wantOwner bool
+		name            string
+		slug            string
+		status          int
+		body            string
+		publicStatus    int
+		publicBody      string
+		wantError       string
+		wantOwner       bool
+		wantPermissions map[string]any
 	}{
 		{name: "qualified slug", slug: "publisher/example-app", status: http.StatusOK, body: `{"owner":{"id":42,"login":"publisher","type":"User"}}`, wantOwner: true},
 		{name: "missing slug"},
 		{name: "omitted owner", slug: "example-app", status: http.StatusOK, body: `{}`},
-		{name: "not found", slug: "example-app", status: http.StatusNotFound, wantError: true},
-		{name: "forbidden", slug: "example-app", status: http.StatusForbidden, wantError: true},
+		{name: "not found", slug: "example-app", status: http.StatusNotFound, wantError: "404"},
+		{name: "forbidden", slug: "example-app", status: http.StatusForbidden, body: `{"message":"Resource not accessible by integration"}`, wantError: "403"},
+		{
+			name: "public registration", slug: "publisher/example-app", status: http.StatusForbidden, body: ipAllowListResponse,
+			publicStatus: http.StatusOK, publicBody: `{"client_id":"Iv1.example","owner":{"id":42,"login":"publisher","type":"User"},"permissions":{"contents":"write"}}`,
+			wantOwner: true, wantPermissions: map[string]any{"contents": "write"},
+		},
+		{
+			name: "different client ID", slug: "example-app", status: http.StatusForbidden, body: ipAllowListResponse,
+			publicStatus: http.StatusOK, publicBody: `{"client_id":"Iv1.other","permissions":{"contents":"write"}}`,
+			wantError: `returned client ID "Iv1.other", expected "Iv1.example"`,
+		},
+		{
+			name: "missing client ID", slug: "example-app", status: http.StatusForbidden, body: ipAllowListResponse,
+			publicStatus: http.StatusOK, publicBody: `{}`, wantError: `returned client ID "", expected "Iv1.example"`,
+		},
+		{
+			name: "public lookup fails", slug: "example-app", status: http.StatusForbidden, body: ipAllowListResponse,
+			publicStatus: http.StatusNotFound, publicBody: `{"message":"Not Found"}`, wantError: "public lookup failed",
+		},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
 			requests := 0
+			publicRequests := 0
 			server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, req *http.Request) {
-				requests++
 				if req.URL.Path != "/apps/example-app" {
 					t.Errorf("path = %q", req.URL.Path)
 				}
-				w.WriteHeader(tc.status)
-				mustWrite(w, tc.body)
+				switch authorization := req.Header.Get("Authorization"); authorization {
+				case "Bearer enterprise-token":
+					requests++
+					w.WriteHeader(tc.status)
+					mustWrite(w, tc.body)
+				case "":
+					publicRequests++
+					if tc.publicStatus == 0 {
+						t.Error("unexpected public registration lookup")
+						w.WriteHeader(http.StatusForbidden)
+						return
+					}
+					w.WriteHeader(tc.publicStatus)
+					mustWrite(w, tc.publicBody)
+				default:
+					t.Error("unexpected authorization header")
+					w.WriteHeader(http.StatusForbidden)
+				}
 			}))
 			defer server.Close()
 			d := schema.TestResourceDataRaw(t, resourceGithubEnterpriseOrganizationAppInstallation().Schema, map[string]any{})
@@ -587,18 +631,36 @@ func TestEnterpriseAppRegistrationMetadata(t *testing.T) {
 				t.Fatal(err)
 			}
 			d.SetId("example:example-org:Iv1.example")
-			err := setEnterpriseAppRegistrationMetadata(t.Context(), d, mustCreateTestGitHubClient(t, server.URL+"/"), tc.slug)
-			if (err != nil) != tc.wantError {
-				t.Fatalf("error = %v, want error %t", err, tc.wantError)
+			client := mustCreateTestGitHubClient(t, server.URL+"/", github.WithAuthToken("enterprise-token"))
+			err := setEnterpriseAppRegistrationMetadata(t.Context(), d, client, tc.slug, clientID)
+			if (tc.wantError == "" && err != nil) || (tc.wantError != "" && (err == nil || !strings.Contains(err.Error(), tc.wantError))) {
+				t.Fatalf("error = %v, want %q", err, tc.wantError)
 			}
 			if d.Id() == "" {
 				t.Fatal("owner lookup cleared installation ID")
 			}
-			if tc.wantError {
+			wantRequests := 1
+			if tc.slug == "" {
+				wantRequests = 0
+			}
+			if requests != wantRequests {
+				t.Errorf("authenticated requests = %d, want %d", requests, wantRequests)
+			}
+			wantPublicRequests := 0
+			if tc.publicStatus != 0 {
+				wantPublicRequests = 1
+			}
+			if publicRequests != wantPublicRequests {
+				t.Errorf("public requests = %d, want %d", publicRequests, wantPublicRequests)
+			}
+			if tc.wantError != "" {
+				if got := d.Get("app_permissions"); !reflect.DeepEqual(got, map[string]any{"contents": "read"}) {
+					t.Errorf("app_permissions = %v, want existing values", got)
+				}
 				return
 			}
-			if got := d.Get("app_permissions").(map[string]any); len(got) != 0 {
-				t.Errorf("app_permissions = %v, want empty", got)
+			if got := d.Get("app_permissions").(map[string]any); !maps.Equal(got, tc.wantPermissions) {
+				t.Errorf("app_permissions = %v, want %v", got, tc.wantPermissions)
 			}
 			owners := d.Get("owner").([]any)
 			if tc.wantOwner {
@@ -607,13 +669,6 @@ func TestEnterpriseAppRegistrationMetadata(t *testing.T) {
 				}
 			} else if len(owners) != 0 {
 				t.Errorf("owner = %v, want empty", owners)
-			}
-			wantRequests := 1
-			if tc.slug == "" {
-				wantRequests = 0
-			}
-			if requests != wantRequests {
-				t.Errorf("requests = %d, want %d", requests, wantRequests)
 			}
 		})
 	}
